@@ -1,17 +1,18 @@
 import { useState, useRef } from "react";
 import { useAuth } from "../../contexts/AuthContext";
+import { API_URL } from "../../config/api";
+import NutritionAnalysis from "../NutritionAnalysis/NutritionAnalysis";
 import "./ImageUpload.css";
-
-const API_URL = "http://localhost:8000/api";
 
 export default function ImageUpload() {
   const { user } = useAuth();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState("idle"); // idle | uploading | success | error
+  const [status, setStatus] = useState("idle"); // idle | uploading | analyzing | success | error
   const [errorMsg, setErrorMsg] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
   const fileInputRef = useRef(null);
 
   function handleFile(selectedFile) {
@@ -48,6 +49,7 @@ export default function ImageUpload() {
     setStatus("idle");
     setProgress(0);
     setErrorMsg("");
+    setAnalysis(null);
     fileInputRef.current.value = "";
   }
 
@@ -99,6 +101,23 @@ export default function ImageUpload() {
         xhr.send(file);
       });
 
+      setStatus("analyzing");
+
+      // TODO: Replace with real API call to analyze the food image
+      // e.g. const analysisRes = await fetch(`${API_URL}/analyze`, { ... });
+      const placeholderAnalysis = {
+        description: "—",
+        calories: "—",
+        fat: "—",
+        carbs: "—",
+        protein: "—",
+        fiber: "—",
+        sugar: "—",
+        summary: "—",
+        recommendation: "—",
+      };
+
+      setAnalysis(placeholderAnalysis);
       setStatus("success");
     } catch (err) {
       setStatus("error");
@@ -130,30 +149,37 @@ export default function ImageUpload() {
         <div className="preview">
           <img src={preview} alt="Preview" className="preview-img" />
 
-          {status === "uploading" && (
+          {(status === "uploading" || status === "analyzing") && (
             <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progress}%` }} />
+              <div
+                className="progress-fill"
+                style={{ width: status === "analyzing" ? "100%" : `${progress}%` }}
+              />
             </div>
           )}
 
-          {status === "success" && (
-            <p className="status-msg status-msg--success">Uploaded to S3</p>
+          {status === "analyzing" && (
+            <p className="status-msg status-msg--analyzing">Analyzing food image...</p>
           )}
 
           {status === "error" && (
             <p className="status-msg status-msg--error">{errorMsg}</p>
           )}
 
+          {status === "success" && analysis && (
+            <NutritionAnalysis analysis={analysis} />
+          )}
+
           <div className="preview-actions">
-            {status !== "uploading" && status !== "success" && (
+            {status !== "uploading" && status !== "analyzing" && status !== "success" && (
               <button className="btn btn--upload" onClick={handleUpload}>
-                Upload to S3
+                Analyze Food
               </button>
             )}
             <button
               className="btn btn--remove"
               onClick={handleRemove}
-              disabled={status === "uploading"}
+              disabled={status === "uploading" || status === "analyzing"}
             >
               {status === "success" ? "Upload another" : "Remove"}
             </button>

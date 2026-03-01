@@ -114,3 +114,7 @@
 .btn--remove:hover {
   background: #c0392b;
 }
+
+.status-msg--analyzing {
+  color: #3498db;
+}
