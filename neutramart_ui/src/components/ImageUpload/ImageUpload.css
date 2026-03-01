@@ -1,0 +1,116 @@
+.upload-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.dropzone {
+  border: 2px dashed #ccc;
+  border-radius: 12px;
+  padding: 48px 24px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.dropzone:hover,
+.dropzone--active {
+  border-color: #3498db;
+  background: #f0f8ff;
+}
+
+.dropzone-icon {
+  font-size: 40px;
+  color: #aaa;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.dropzone-text {
+  margin: 0;
+  font-size: 14px;
+  color: #888;
+}
+
+.preview {
+  text-align: center;
+}
+
+.preview-img {
+  max-width: 100%;
+  max-height: 320px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.progress-bar {
+  height: 6px;
+  background: #e0e0e0;
+  border-radius: 3px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #3498db;
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+
+.status-msg {
+  font-size: 14px;
+  font-weight: 500;
+  margin: 0 0 16px;
+}
+
+.status-msg--success {
+  color: #27ae60;
+}
+
+.status-msg--error {
+  color: #e74c3c;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--upload {
+  background: #27ae60;
+  color: #fff;
+}
+
+.btn--upload:hover {
+  background: #219a52;
+}
+
+.btn--remove {
+  background: #e74c3c;
+  color: #fff;
+}
+
+.btn--remove:hover {
+  background: #c0392b;
+}
