@@ -1,6 +1,7 @@
 import "./NutritionAnalysis.css";
 
 const NUTRIENTS = [
+  { key: "weight", label: "Weight" },
   { key: "calories", label: "Calories" },
   { key: "protein", label: "Protein" },
   { key: "carbs", label: "Carbs" },

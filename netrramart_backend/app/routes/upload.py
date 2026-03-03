@@ -1,9 +1,10 @@
 import uuid
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import boto3
 
+from app.auth import get_current_user
 from app.config import (
     AWS_ACCESS_KEY_ID,
     AWS_SECRET_ACCESS_KEY,
@@ -31,7 +32,7 @@ class PresignRequest(BaseModel):
 
 
 @router.post("/upload/presign")
-def create_presigned_url(body: PresignRequest):
+def create_presigned_url(body: PresignRequest, _user=Depends(get_current_user)):
     if body.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="File type not allowed")
 

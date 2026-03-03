@@ -5,7 +5,7 @@ import NutritionAnalysis from "../NutritionAnalysis/NutritionAnalysis";
 import "./ImageUpload.css";
 
 export default function ImageUpload() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [progress, setProgress] = useState(0);
@@ -63,7 +63,10 @@ export default function ImageUpload() {
     try {
       const res = await fetch(`${API_URL}/upload/presign`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           filename: file.name,
           content_type: file.type,
@@ -76,7 +79,7 @@ export default function ImageUpload() {
         throw new Error(err.detail || "Failed to get upload URL");
       }
 
-      const { url } = await res.json();
+      const { url, key } = await res.json();
 
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -103,21 +106,22 @@ export default function ImageUpload() {
 
       setStatus("analyzing");
 
-      // TODO: Replace with real API call to analyze the food image
-      // e.g. const analysisRes = await fetch(`${API_URL}/analyze`, { ... });
-      const placeholderAnalysis = {
-        description: "—",
-        calories: "—",
-        fat: "—",
-        carbs: "—",
-        protein: "—",
-        fiber: "—",
-        sugar: "—",
-        summary: "—",
-        recommendation: "—",
-      };
+      const analysisRes = await fetch(`${API_URL}/analyze`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ key, content_type: file.type }),
+      });
 
-      setAnalysis(placeholderAnalysis);
+      if (!analysisRes.ok) {
+        const err = await analysisRes.json();
+        throw new Error(err.detail || "Food analysis failed");
+      }
+
+      const analysisData = await analysisRes.json();
+      setAnalysis(analysisData);
       setStatus("success");
     } catch (err) {
       setStatus("error");
@@ -159,7 +163,10 @@ export default function ImageUpload() {
           )}
 
           {status === "analyzing" && (
-            <p className="status-msg status-msg--analyzing">Analyzing food image...</p>
+            <div className="analyzing-indicator">
+              <span className="spinner" />
+              <p className="status-msg status-msg--analyzing">Analyzing food image...</p>
+            </div>
           )}
 
           {status === "error" && (
