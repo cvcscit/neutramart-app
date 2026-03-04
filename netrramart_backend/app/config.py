@@ -3,10 +3,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-AWS_ACCESS_KEY_ID = os.environ["AWS_ACCESS_KEY_ID"]
-AWS_SECRET_ACCESS_KEY = os.environ["AWS_SECRET_ACCESS_KEY"]
-AWS_REGION = os.environ["AWS_REGION"]
-S3_BUCKET_NAME = os.environ["S3_BUCKET_NAME"]
+AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "sci-neutrasmart-project")
+
+GOOGLE_CLIENT_ID = os.environ.get(
+    "GOOGLE_CLIENT_ID",
+    "1002409619791-66n3jv66p121t7g0qmasukau0r6tc6i1.apps.googleusercontent.com",
+)
+
+ALLOWED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174"
+    ).split(",")
+    if o.strip()
+]
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",

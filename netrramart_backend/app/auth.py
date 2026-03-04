@@ -3,7 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from google.oauth2 import id_token
 from google.auth.transport import requests
 
-GOOGLE_CLIENT_ID = "1002409619791-66n3jv66p121t7g0qmasukau0r6tc6i1.apps.googleusercontent.com"
+from app.config import GOOGLE_CLIENT_ID
 
 security = HTTPBearer()
 

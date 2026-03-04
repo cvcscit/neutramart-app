@@ -7,8 +7,6 @@ import boto3
 
 from app.auth import get_current_user
 from app.config import (
-    AWS_ACCESS_KEY_ID,
-    AWS_SECRET_ACCESS_KEY,
     AWS_REGION,
     S3_BUCKET_NAME,
     BEDROCK_MODEL_ID,
@@ -17,19 +15,8 @@ from app.config import (
 
 router = APIRouter()
 
-s3 = boto3.client(
-    "s3",
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=AWS_REGION,
-)
-
-bedrock = boto3.client(
-    "bedrock-runtime",
-    aws_access_key_id=AWS_ACCESS_KEY_ID,
-    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-    region_name=BEDROCK_REGION,
-)
+s3 = boto3.client("s3", region_name=AWS_REGION)
+bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
 
 PROMPT = (
     "You are a nutrition analysis assistant. Analyze the food in this image and "
