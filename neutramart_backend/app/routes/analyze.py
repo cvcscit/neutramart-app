@@ -1,7 +1,7 @@
 import json
 import re
 import base64
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 import boto3
 
@@ -11,7 +11,9 @@ from app.config import (
     S3_BUCKET_NAME,
     BEDROCK_MODEL_ID,
     BEDROCK_REGION,
+    MAX_IMAGE_SIZE_BYTES,
 )
+from app.limiter import limiter
 
 router = APIRouter()
 
@@ -44,13 +46,19 @@ class AnalyzeRequest(BaseModel):
 
 
 @router.post("/analyze")
-def analyze_food(body: AnalyzeRequest, _user=Depends(get_current_user)):
-    # 1. Fetch image from S3
+@limiter.limit("10/minute")
+def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_current_user)):
+    # 1. Fetch image from S3 with size check
     try:
+        head = s3.head_object(Bucket=S3_BUCKET_NAME, Key=body.key)
+        if head["ContentLength"] > MAX_IMAGE_SIZE_BYTES:
+            raise HTTPException(status_code=413, detail="Image too large (max 10MB)")
         s3_response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=body.key)
         image_bytes = s3_response["Body"].read()
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Image not found in S3: {e}")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=404, detail="Image not found")
 
     # 2. Build Bedrock request with base64-encoded image
     image_base64 = base64.b64encode(image_bytes).decode("utf-8")

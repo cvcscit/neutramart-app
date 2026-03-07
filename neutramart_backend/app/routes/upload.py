@@ -1,6 +1,6 @@
 import uuid
 import os
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 import boto3
 
@@ -11,6 +11,7 @@ from app.config import (
     ALLOWED_CONTENT_TYPES,
     PRESIGN_EXPIRY_SECONDS,
 )
+from app.limiter import limiter
 
 router = APIRouter()
 
@@ -24,7 +25,8 @@ class PresignRequest(BaseModel):
 
 
 @router.post("/upload/presign")
-def create_presigned_url(body: PresignRequest, _user=Depends(get_current_user)):
+@limiter.limit("20/minute")
+def create_presigned_url(request: Request, body: PresignRequest, _user=Depends(get_current_user)):
     if body.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="File type not allowed")
 
