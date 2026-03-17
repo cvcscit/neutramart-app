@@ -1,6 +1,5 @@
 import json
 import re
-import base64
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 import boto3
@@ -60,44 +59,36 @@ def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_curre
     except Exception:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    # 2. Build Bedrock request with base64-encoded image
-    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+    # 2. Build Bedrock Converse request with image
+    media_format = body.content_type.split("/")[-1]
+    if media_format == "jpg":
+        media_format = "jpeg"
 
-    request_body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 1024,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": body.content_type,
-                            "data": image_base64,
-                        },
-                    },
-                    {"type": "text", "text": PROMPT},
-                ],
-            }
-        ],
-    })
-
-    # 3. Call Bedrock
+    # 3. Call Bedrock via Converse API
     try:
-        bedrock_response = bedrock.invoke_model(
+        bedrock_response = bedrock.converse(
             modelId=BEDROCK_MODEL_ID,
-            contentType="application/json",
-            accept="application/json",
-            body=request_body,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "image": {
+                                "format": media_format,
+                                "source": {"bytes": image_bytes},
+                            }
+                        },
+                        {"text": PROMPT},
+                    ],
+                }
+            ],
+            inferenceConfig={"maxTokens": 1024},
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Bedrock API error: {e}")
 
     # 4. Parse response
-    response_body = json.loads(bedrock_response["body"].read())
-    assistant_text = response_body["content"][0]["text"]
+    assistant_text = bedrock_response["output"]["message"]["content"][0]["text"]
 
     try:
         analysis = json.loads(assistant_text)
