@@ -62,3 +62,34 @@ export function analyzeFood(token, { key, contentType }) {
     return res.json();
   });
 }
+
+export function sendChatMessage(token, { message, history }) {
+  return fetch(`${API_URL}/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ message, history }),
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Chat failed");
+    }
+    return res.json();
+  });
+}
+
+export function getWeeklySummary(token) {
+  return fetch(`${API_URL}/weekly-summary`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Failed to fetch weekly summary");
+    }
+    return res.json();
+  });
+}

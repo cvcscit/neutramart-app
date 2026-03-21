@@ -1,5 +1,10 @@
 import json
+import logging
 import re
+import threading
+from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 import boto3
@@ -44,9 +49,29 @@ class AnalyzeRequest(BaseModel):
     content_type: str
 
 
+MAX_DAILY_UPLOADS = 15
+
+
 @router.post("/analyze")
 @limiter.limit("10/minute")
 def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_current_user)):
+    # 0. Check daily upload limit
+    user_email = _user["email"]
+    uid = user_email.replace("@", "_at_").replace(".", "_")
+    today_prefix = f"users/{uid}/scans/{datetime.now(timezone.utc).strftime('%Y%m%d')}"
+    try:
+        today_scans = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=today_prefix)
+        today_count = today_scans.get("KeyCount", 0)
+        if today_count >= MAX_DAILY_UPLOADS:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily upload limit reached ({MAX_DAILY_UPLOADS} images/day). Try again tomorrow.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Don't block user if check fails
+
     # 1. Fetch image from S3 with size check
     try:
         head = s3.head_object(Bucket=S3_BUCKET_NAME, Key=body.key)
@@ -107,4 +132,164 @@ def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_curre
         if k not in analysis:
             analysis[k] = "N/A"
 
+    # 6. Save scan result to S3 and trigger weekly summary in background
+    user_email = _user["email"]
+    user_id = user_email.replace("@", "_at_").replace(".", "_")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    scan_key = f"users/{user_id}/scans/{timestamp}.json"
+
+    try:
+        s3.put_object(
+            Bucket=S3_BUCKET_NAME,
+            Key=scan_key,
+            Body=json.dumps({**analysis, "timestamp": timestamp, "image_key": body.key}),
+            ContentType="application/json",
+        )
+    except Exception:
+        pass  # Don't fail the request if scan save fails
+
+    # Trigger weekly summary generation in background
+    threading.Thread(
+        target=_generate_weekly_summary,
+        args=(user_id,),
+        daemon=True,
+    ).start()
+
     return analysis
+
+
+WEEKLY_SUMMARY_PROMPT = (
+    "You are a nutrition and dietary advisor. Below are the food analysis records "
+    "from the last 7 days for a user. Each record includes the food description, "
+    "calories, protein, carbs, fat, fiber, and sugar.\n\n"
+    "{health_profile_section}"
+    "Analyze the eating patterns and provide a comprehensive 7-day summary in "
+    "plain text format with these sections:\n\n"
+    "1. EATING HABITS OVERVIEW - Summarize what the user has been eating, meal "
+    "patterns, and dietary tendencies.\n\n"
+    "2. NUTRITIONAL ANALYSIS - Average daily calorie intake, macronutrient "
+    "balance (protein/carbs/fat ratio), fiber and sugar trends.\n\n"
+    "3. POSITIVE HABITS - What the user is doing well nutritionally.\n\n"
+    "4. AREAS OF CONCERN - Any nutritional gaps, excess intake, or unhealthy "
+    "patterns.\n\n"
+    "5. RECOMMENDATIONS - Specific, actionable dietary suggestions to improve "
+    "nutrition.\n\n"
+    "6. RESTRICTIONS & WARNINGS - Any foods or patterns to avoid based on the "
+    "observed diet (e.g., too much sugar, sodium, processed food).\n\n"
+    "Keep the tone friendly but professional. Be specific with numbers where "
+    "possible.\n\n"
+    "Here are the food records:\n\n"
+)
+
+
+def _get_health_profile(user_id: str) -> str:
+    """Fetch user health profile from S3. Returns formatted section or empty string."""
+    # TODO: Future — load from users/{user_id}/health_profile.json
+    # Expected fields: age, gender, weight, height, BMI, medical conditions,
+    # allergies, medications, fitness goals, dietary preferences (veg/vegan/etc),
+    # blood sugar levels, cholesterol, blood pressure, etc.
+    #
+    # When available, the prompt will include:
+    # "The user has the following health profile:\n{profile_data}\n\n"
+    # "Factor in the user's health conditions, allergies, and goals when making "
+    # "recommendations and restrictions.\n\n"
+    try:
+        profile_key = f"users/{user_id}/health_profile.json"
+        response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=profile_key)
+        profile = json.loads(response["Body"].read())
+        profile_text = "The user has the following health profile:\n"
+        for key, value in profile.items():
+            profile_text += f"  {key}: {value}\n"
+        profile_text += (
+            "\nFactor in the user's health conditions, allergies, and goals "
+            "when making recommendations and restrictions.\n\n"
+        )
+        return profile_text
+    except Exception:
+        return ""
+
+
+def _generate_weekly_summary(user_id: str):
+    """Fetch last 7 days of scans and generate a weekly eating summary."""
+    try:
+        prefix = f"users/{user_id}/scans/"
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+
+        # List all scan files for this user
+        response = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
+        if "Contents" not in response:
+            return
+
+        # Filter to last 7 days and fetch each scan
+        scans = []
+        for obj in response["Contents"]:
+            # Extract timestamp from key: users/{id}/scans/20260319T120000Z.json
+            filename = obj["Key"].split("/")[-1].replace(".json", "")
+            try:
+                scan_time = datetime.strptime(filename, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+            if scan_time >= cutoff:
+                scan_data = s3.get_object(Bucket=S3_BUCKET_NAME, Key=obj["Key"])
+                scans.append(json.loads(scan_data["Body"].read()))
+
+        if not scans:
+            return
+
+        # Build the prompt with all scan data
+        health_section = _get_health_profile(user_id)
+        records_text = ""
+        for scan in sorted(scans, key=lambda x: x.get("timestamp", "")):
+            records_text += (
+                f"- Date: {scan.get('timestamp', 'unknown')}\n"
+                f"  Food: {scan.get('description', 'N/A')}\n"
+                f"  Calories: {scan.get('calories', 'N/A')}, "
+                f"Protein: {scan.get('protein', 'N/A')}, "
+                f"Carbs: {scan.get('carbs', 'N/A')}, "
+                f"Fat: {scan.get('fat', 'N/A')}, "
+                f"Fiber: {scan.get('fiber', 'N/A')}, "
+                f"Sugar: {scan.get('sugar', 'N/A')}\n\n"
+            )
+
+        full_prompt = WEEKLY_SUMMARY_PROMPT.format(health_profile_section=health_section) + records_text
+
+        # Call Bedrock for summary
+        summary_response = bedrock.converse(
+            modelId=BEDROCK_MODEL_ID,
+            messages=[{"role": "user", "content": [{"text": full_prompt}]}],
+            inferenceConfig={"maxTokens": 2048},
+        )
+
+        summary_text = summary_response["output"]["message"]["content"][0]["text"]
+
+        # Save to S3
+        summary_key = f"users/{user_id}/weekly_summary.txt"
+        s3.put_object(
+            Bucket=S3_BUCKET_NAME,
+            Key=summary_key,
+            Body=summary_text,
+            ContentType="text/plain",
+        )
+    except Exception as e:
+        logger.error(f"Weekly summary generation failed for {user_id}: {e}")
+
+
+@router.get("/weekly-summary")
+@limiter.limit("10/minute")
+def get_weekly_summary(request: Request, _user=Depends(get_current_user)):
+    user_email = _user["email"]
+    user_id = user_email.replace("@", "_at_").replace(".", "_")
+    summary_key = f"users/{user_id}/weekly_summary.txt"
+
+    try:
+        # Check if file exists first
+        s3.head_object(Bucket=S3_BUCKET_NAME, Key=summary_key)
+        response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=summary_key)
+        summary = response["Body"].read().decode("utf-8")
+        return {"summary": summary}
+    except Exception as e:
+        error_code = getattr(e, "response", {}).get("Error", {}).get("Code", "")
+        if error_code in ("NoSuchKey", "404", "Not Found"):
+            return {"summary": None, "message": "No weekly summary available yet. Upload food images to generate one."}
+        logger.error(f"Weekly summary fetch failed: {e}")
+        return {"summary": None, "message": "Summary not available yet."}

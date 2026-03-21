@@ -3,7 +3,7 @@ import useDropzone from "../../hooks/useDropzone";
 import NutritionAnalysis from "../NutritionAnalysis/NutritionAnalysis";
 import "./ImageUpload.css";
 
-export default function ImageUpload() {
+export default function ImageUpload({ onScanComplete }) {
   const {
     preview,
     progress,
@@ -14,7 +14,7 @@ export default function ImageUpload() {
     handleFileChange,
     handleRemove,
     handleUpload,
-  } = useImageAnalysis();
+  } = useImageAnalysis(onScanComplete);
 
   const { dragging, onDrop, onDragOver, onDragLeave } = useDropzone((file) => {
     handleFileChange({ target: { files: [file] } });
@@ -65,7 +65,12 @@ export default function ImageUpload() {
           )}
 
           {status === "success" && analysis && (
-            <NutritionAnalysis analysis={analysis} />
+            <>
+              <p className="scan-timestamp">
+                Scanned at {new Date().toLocaleString()}
+              </p>
+              <NutritionAnalysis analysis={analysis} />
+            </>
           )}
 
           <div className="preview-actions">
