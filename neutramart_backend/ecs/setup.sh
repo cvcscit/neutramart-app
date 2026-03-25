@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════
-# Neutramart — Production Fargate Infrastructure Setup
+# nutrasmart — Production Fargate Infrastructure Setup
 # ══════════════════════════════════════════════════════════════
 # This script creates ALL AWS resources from scratch:
 #   VPC, Subnets, IGW, NAT GW, ALB, Security Groups,
@@ -19,7 +19,7 @@ set -euo pipefail
 # ══════════════════════════════════════════════════════════════
 
 AWS_REGION="ap-south-1"
-PROJECT="neutramart"
+PROJECT="nutrasmart"
 
 # Auto-detect AWS Account ID
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)

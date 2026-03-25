@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════
-# Neutramart — Deploy Frontend to S3 + CloudFront
+# nutrasmart — Deploy Frontend to S3 + CloudFront
 # ══════════════════════════════════════════════════════════════
 # What this script does:
 #   1. Builds the Vite/React frontend
@@ -13,7 +13,7 @@ set -euo pipefail
 #   6. Uploads build files to S3
 #
 # Usage:
-#   cd neutramart_ui
+#   cd nutrasmart_ui
 #   chmod +x deploy-frontend.sh
 #   ./deploy-frontend.sh
 # ══════════════════════════════════════════════════════════════
@@ -21,13 +21,13 @@ set -euo pipefail
 DOMAIN="nutrasmart.in"
 S3_BUCKET="nutrasmart-frontend"
 AWS_REGION="ap-south-1"
-PROFILE="neutramart"
+PROFILE="nutrasmart"
 HOSTED_ZONE_ID="Z05944272T7ZXS3L3CYCR"
 
 export AWS_PROFILE="$PROFILE"
 
 echo "══════════════════════════════════════════════"
-echo "  Deploying Neutramart Frontend"
+echo "  Deploying nutrasmart Frontend"
 echo "══════════════════════════════════════════════"
 echo ""
 
@@ -201,7 +201,7 @@ else
                 \"SSLSupportMethod\": \"sni-only\",
                 \"MinimumProtocolVersion\": \"TLSv1.2_2021\"
             },
-            \"Comment\": \"Neutramart Frontend\",
+            \"Comment\": \"nutrasmart Frontend\",
             \"Enabled\": true,
             \"HttpVersion\": \"http2and3\",
             \"PriceClass\": \"PriceClass_200\"

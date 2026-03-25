@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════
-# Neutramart — HTTPS Setup (ACM + Route 53 + ALB)
+# nutrasmart — HTTPS Setup (ACM + Route 53 + ALB)
 # ══════════════════════════════════════════════════════════════
 # Prerequisites:
 #   - setup.sh has been run (resources.env exists)
@@ -18,14 +18,14 @@ set -euo pipefail
 #   7. Opens port 443 on ALB security group
 #
 # Usage:
-#   cd neutramart_backend/ecs
+#   cd nutrasmart_backend/ecs
 #   chmod +x setup-https.sh
 #   ./setup-https.sh
 # ══════════════════════════════════════════════════════════════
 
 DOMAIN="nutrasmart.in"
 API_SUBDOMAIN="api.nutrasmart.in"
-PROFILE="neutramart"
+PROFILE="nutrasmart"
 
 # Load resource IDs from setup
 if [ ! -f resources.env ]; then

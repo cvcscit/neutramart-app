@@ -1,15 +1,15 @@
 {
-  "family": "neutramart-backend",
+  "family": "nutrasmart-backend",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/neutramart-ecs-execution-role",
-  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/neutramart-ecs-task-role",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/nutrasmart-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/nutrasmart-ecs-task-role",
   "containerDefinitions": [
     {
-      "name": "neutramart-backend",
-      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/neutramart-backend:latest",
+      "name": "nutrasmart-backend",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/nutrasmart-backend:latest",
       "essential": true,
       "portMappings": [
         {
@@ -25,11 +25,14 @@
       "secrets": [
         {
           "name": "GOOGLE_CLIENT_ID",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/neutramart/google-client-id"
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/google-client-id"
         }
       ],
       "healthCheck": {
-        "command": ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"],
+        "command": [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"
+        ],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
@@ -38,7 +41,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/neutramart-backend",
+          "awslogs-group": "/ecs/nutrasmart-backend",
           "awslogs-region": "<AWS_REGION>",
           "awslogs-stream-prefix": "ecs"
         }

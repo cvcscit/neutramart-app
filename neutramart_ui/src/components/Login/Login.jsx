@@ -9,7 +9,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <h1>Neutramart</h1>
+          <h1>nutrasmart</h1>
           <p>Sign in with your Google account to continue</p>
         </div>
         <div className="login-action">

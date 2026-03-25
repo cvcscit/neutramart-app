@@ -6,7 +6,7 @@ export default function Navbar() {
 
   return (
     <nav className="navbar">
-      <span className="navbar-brand">Neutramart</span>
+      <span className="navbar-brand">nutrasmart</span>
       <div className="navbar-right">
         <img src={user.picture} alt="" className="navbar-avatar" />
         <span className="navbar-name">{user.firstName}</span>

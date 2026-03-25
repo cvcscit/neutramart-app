@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════
-# Neutramart — Build, Push, and Deploy to Fargate
+# nutrasmart — Build, Push, and Deploy to Fargate
 # ══════════════════════════════════════════════════════════════
 # Usage:
 #   cd netrramart_backend/ecs
@@ -16,7 +16,7 @@ if [ ! -f resources.env ]; then
 fi
 source resources.env
 
-PROFILE="neutramart"
+PROFILE="nutrasmart"
 export AWS_PROFILE="$PROFILE"
 
 ECR_REPO="${PROJECT}-backend"
@@ -30,7 +30,7 @@ IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
 IMAGE_URI="${ECR_URI}:${IMAGE_TAG}"
 
 echo "══════════════════════════════════════════════"
-echo "  Deploying Neutramart Backend"
+echo "  Deploying nutrasmart Backend"
 echo "  Image tag: $IMAGE_TAG"
 echo "══════════════════════════════════════════════"
 echo ""

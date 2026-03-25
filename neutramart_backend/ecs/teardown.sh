@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════
-# Neutramart — Teardown ALL Infrastructure
+# nutrasmart — Teardown ALL Infrastructure
 # ══════════════════════════════════════════════════════════════
 # WARNING: This deletes everything created by setup.sh.
 #          All data will be lost. This cannot be undone.
@@ -19,7 +19,7 @@ fi
 source resources.env
 
 echo "══════════════════════════════════════════════"
-echo "  WARNING: This will DELETE all Neutramart"
+echo "  WARNING: This will DELETE all nutrasmart"
 echo "  infrastructure in AWS. This cannot be undone."
 echo "══════════════════════════════════════════════"
 echo ""
@@ -151,5 +151,5 @@ rm -f resources.env
 echo ""
 echo "══════════════════════════════════════════════"
 echo "  TEARDOWN COMPLETE"
-echo "  All Neutramart infrastructure has been deleted."
+echo "  All nutrasmart infrastructure has been deleted."
 echo "══════════════════════════════════════════════"
