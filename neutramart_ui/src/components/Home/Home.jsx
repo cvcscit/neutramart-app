@@ -4,7 +4,6 @@ import Navbar from "../Navbar/Navbar";
 import ImageUpload from "../ImageUpload/ImageUpload";
 import WeeklySummary from "../WeeklySummary/WeeklySummary";
 import Chat from "../Chat/Chat";
-import "./Home.css";
 
 export default function Home() {
   const { user } = useAuth();
@@ -15,7 +14,7 @@ export default function Home() {
       <Navbar />
       <main className="home-layout">
         <div className="home-left">
-          <h2>Hello, {user.firstName}</h2>
+          <h2 className="flex text-4xl underline">Hello, {user.firstName}</h2>
           <p className="home-subtitle">Upload an image to get started</p>
           <ImageUpload onScanComplete={() => setScanCount((c) => c + 1)} />
         </div>
