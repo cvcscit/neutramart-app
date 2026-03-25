@@ -37,11 +37,19 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
     lastScan?.analysis || null,
   );
 
+  // Camera state
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+
+  // Refs
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // ── File helpers ────────────────────────────────────────────────────────────
 
   function handleFile(selectedFile: File | null) {
     if (!selectedFile || !selectedFile.type.startsWith("image/")) return;
-
     setFile(selectedFile);
     setPreview(URL.createObjectURL(selectedFile));
     setStatus("idle");
@@ -50,8 +58,7 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] || null;
-    handleFile(file);
+    handleFile(e.target.files?.[0] ?? null);
   }
 
   function handleRemove() {
@@ -61,13 +68,11 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
     setProgress(0);
     setErrorMsg("");
     setAnalysis(null);
-
     localStorage.removeItem("last_scan");
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
+
+  // ── Upload & analyse ────────────────────────────────────────────────────────
 
   async function handleUpload() {
     if (!file || !user || !token) return;
@@ -98,40 +103,110 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
       setAnalysis(analysisData);
       setStatus("success");
 
+      // Persist to localStorage so the last scan survives a refresh
       const reader = new FileReader();
       reader.onloadend = () => {
         try {
           localStorage.setItem(
             "last_scan",
-            JSON.stringify({
-              preview: reader.result,
-              analysis: analysisData,
-            }),
+            JSON.stringify({ preview: reader.result, analysis: analysisData }),
           );
         } catch {}
       };
       reader.readAsDataURL(file);
 
-      if (onScanComplete) {
-        setTimeout(() => onScanComplete(), 5000);
-      }
+      if (onScanComplete) setTimeout(() => onScanComplete(), 5000);
     } catch (err: any) {
       setStatus("error");
       setErrorMsg(err?.message || "Upload failed");
     }
   }
 
+  // ── Camera helpers ──────────────────────────────────────────────────────────
+
+  async function openCamera() {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+      setStream(mediaStream);
+      setCameraOpen(true);
+      // Give the <video> element a tick to mount before assigning srcObject
+      setTimeout(() => {
+        if (videoRef.current) videoRef.current.srcObject = mediaStream;
+      }, 100);
+    } catch {
+      setStatus("error");
+      setErrorMsg("Camera access denied – please allow camera permissions.");
+    }
+  }
+
+  function closeCamera() {
+    stream?.getTracks().forEach((t) => t.stop());
+    setStream(null);
+    setCameraOpen(false);
+  }
+
+  async function capturePhoto() {
+    if (!videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      async (blob) => {
+        if (!blob) return;
+
+        const captured = new File([blob], `photo-${Date.now()}.jpg`, {
+          type: "image/jpeg",
+        });
+
+        if (captured.size > 4 * 1024 * 1024) {
+          setStatus("error");
+          setErrorMsg(
+            "Photo is too large (max 4 MB). Try moving closer or improving lighting.",
+          );
+          closeCamera();
+          return;
+        }
+
+        closeCamera();
+        handleFile(captured);
+      },
+      "image/jpeg",
+      0.95,
+    );
+  }
+
+  // ── Public API ──────────────────────────────────────────────────────────────
+
   return {
+    // state
     file,
     preview,
     progress,
     status,
     errorMsg,
     analysis,
+    // file
     fileInputRef,
+    handleFile,
     handleFileChange,
     handleRemove,
     handleUpload,
-    handleFile,
+    // camera
+    cameraOpen,
+    openCamera,
+    closeCamera,
+    capturePhoto,
+    videoRef,
+    canvasRef,
   };
 }
