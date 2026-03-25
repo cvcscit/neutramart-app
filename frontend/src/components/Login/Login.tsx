@@ -1,9 +1,16 @@
 import { GoogleLogin } from "@react-oauth/google";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import "./Login.css";
 
 export default function Login() {
   const { handleLoginSuccess } = useAuth();
+  const navigate = useNavigate();
+
+  function onSuccess(credentialResponse: any) {
+    handleLoginSuccess(credentialResponse);
+    navigate("/dashboard");
+  }
 
   return (
     <div className="login-page">
@@ -14,7 +21,7 @@ export default function Login() {
         </div>
         <div className="login-action">
           <GoogleLogin
-            onSuccess={handleLoginSuccess}
+            onSuccess={onSuccess}
             onError={() => console.error("Login failed")}
             shape="rectangular"
             size="large"
