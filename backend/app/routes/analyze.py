@@ -24,6 +24,9 @@ router = APIRouter()
 s3 = boto3.client("s3", region_name=AWS_REGION)
 bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
 
+BEDROCK_MAX_IMAGE_BYTES = 3_932_160  # 3.75 MB – Bedrock Converse inline bytes limit
+SUPPORTED_BEDROCK_FORMATS = {"jpeg", "png", "gif", "webp"}
+
 PROMPT = (
     "You are a nutrition analysis assistant. Analyze the food in this image and "
     "return ONLY a JSON object with these exact keys, no other text:\n"
@@ -85,9 +88,21 @@ def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_curre
         raise HTTPException(status_code=404, detail="Image not found")
 
     # 2. Build Bedrock Converse request with image
-    media_format = body.content_type.split("/")[-1]
+    media_format = body.content_type.split("/")[-1].lower().strip()
     if media_format == "jpg":
         media_format = "jpeg"
+
+    if media_format not in SUPPORTED_BEDROCK_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported image format '{media_format}'. Allowed: jpeg, png, gif, webp.",
+        )
+
+    if len(image_bytes) > BEDROCK_MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="Image is too large for analysis (max 3.75 MB). Please compress or resize the image.",
+        )
 
     # 3. Call Bedrock via Converse API
     try:
