@@ -1,4 +1,0 @@
-.env
-ecs/resources.env
-__pycache__/
-*.pyc
