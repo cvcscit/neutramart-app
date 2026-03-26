@@ -5,8 +5,9 @@ import { GoogleLogin } from "@react-oauth/google";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
-function LoginForm() {
+function LoginForm({ className }: { className?: string }) {
   const { handleLoginSuccess } = useAuth();
   const navigate = useNavigate();
 
@@ -20,7 +21,28 @@ function LoginForm() {
     }
   }
 
-  return <GoogleLogin onSuccess={onSuccess} />;
+  return (
+    <div className={cn("flex flex-col gap-6", className)}>
+      <div className="flex flex-col items-center gap-2 text-center">
+        <h1 className="text-3xl font-bold">Login to your account</h1>
+        <p className="text-muted-foreground text-sm text-balance">
+          Use your Google account to sign in
+        </p>
+      </div>
+
+      <div className="grid gap-6">
+        <div className="after:border-border relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t">
+          <span className="bg-background text-muted-foreground relative z-10 px-2">
+            Continue with
+          </span>
+        </div>
+
+        <div className="flex justify-center">
+          <GoogleLogin onSuccess={onSuccess} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function LoginPageComponent() {

@@ -11,7 +11,6 @@ export default function Upload() {
 
   return (
     <div className="home-page">
-      <Navbar />
       <main className="home-layout">
         <div className="home-left">
           <h2 className="flex text-4xl underline">Hello, {user?.firstName}</h2>
