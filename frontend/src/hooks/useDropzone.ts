@@ -1,14 +1,14 @@
 import { useState } from "react";
 
-export default function useDropzone(onFileDrop: (file: File) => void) {
+export default function useDropzone(onFilesDrop: (files: File[]) => void) {
   const [dragging, setDragging] = useState<boolean>(false);
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setDragging(false);
 
-    const file = e.dataTransfer.files?.[0];
-    if (file) onFileDrop(file);
+    const dropped = Array.from(e.dataTransfer.files || []);
+    if (dropped.length) onFilesDrop(dropped);
   }
 
   function onDragOver(e: React.DragEvent<HTMLDivElement>) {
