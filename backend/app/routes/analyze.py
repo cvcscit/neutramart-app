@@ -1,8 +1,10 @@
+import io
 import json
 import logging
 import re
 import threading
 from datetime import datetime, timedelta, timezone
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -26,9 +28,22 @@ bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
 
 BEDROCK_MAX_IMAGE_BYTES = 3_932_160  # 3.75 MB – Bedrock Converse inline bytes limit
 SUPPORTED_BEDROCK_FORMATS = {"jpeg", "png", "gif", "webp"}
+MAX_IMAGES_PER_REQUEST = 5
+
+
+def normalize_image(raw_bytes: bytes) -> bytes:
+    """Open with Pillow and re-encode as JPEG to fix format mismatches / HEIC / corruption."""
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        img = img.convert("RGB")
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=85)
+        return out.getvalue()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid or unreadable image file.")
 
 PROMPT = (
-    "You are a nutrition analysis assistant. Analyze the food in this image and "
+    "You are a nutrition analysis assistant. Analyze the food in the provided image(s) and "
     "return ONLY a JSON object with these exact keys, no other text:\n"
     "{\n"
     '  "description": "Brief description of the food item(s) visible",\n'
@@ -47,9 +62,13 @@ PROMPT = (
 )
 
 
-class AnalyzeRequest(BaseModel):
+class ImageItem(BaseModel):
     key: str
     content_type: str
+
+
+class AnalyzeRequest(BaseModel):
+    images: list[ImageItem]
 
 
 MAX_DAILY_UPLOADS = 15
@@ -58,6 +77,11 @@ MAX_DAILY_UPLOADS = 15
 @router.post("/analyze")
 @limiter.limit("10/minute")
 def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_current_user)):
+    if not body.images:
+        raise HTTPException(status_code=400, detail="At least one image is required.")
+    if len(body.images) > MAX_IMAGES_PER_REQUEST:
+        raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES_PER_REQUEST} images per request.")
+
     # 0. Check daily upload limit
     user_email = _user["email"]
     uid = user_email.replace("@", "_at_").replace(".", "_")
@@ -75,53 +99,39 @@ def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_curre
     except Exception:
         pass  # Don't block user if check fails
 
-    # 1. Fetch image from S3 with size check
-    try:
-        head = s3.head_object(Bucket=S3_BUCKET_NAME, Key=body.key)
-        if head["ContentLength"] > MAX_IMAGE_SIZE_BYTES:
-            raise HTTPException(status_code=413, detail="Image too large (max 10MB)")
-        s3_response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=body.key)
-        image_bytes = s3_response["Body"].read()
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=404, detail="Image not found")
+    # 1. Fetch all images from S3, normalize with Pillow
+    image_content_blocks = []
+    for item in body.images:
+        try:
+            head = s3.head_object(Bucket=S3_BUCKET_NAME, Key=item.key)
+            if head["ContentLength"] > MAX_IMAGE_SIZE_BYTES:
+                raise HTTPException(status_code=413, detail=f"Image {item.key} is too large (max 10MB)")
+            s3_response = s3.get_object(Bucket=S3_BUCKET_NAME, Key=item.key)
+            raw_bytes = s3_response["Body"].read()
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(status_code=404, detail=f"Image not found: {item.key}")
 
-    # 2. Build Bedrock Converse request with image
-    media_format = body.content_type.split("/")[-1].lower().strip()
-    if media_format == "jpg":
-        media_format = "jpeg"
+        # Normalize: re-encode as JPEG via Pillow (fixes HEIC, format mismatches, corruption)
+        jpeg_bytes = normalize_image(raw_bytes)
 
-    if media_format not in SUPPORTED_BEDROCK_FORMATS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported image format '{media_format}'. Allowed: jpeg, png, gif, webp.",
-        )
+        if len(jpeg_bytes) > BEDROCK_MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="An image is too large for analysis after processing (max 3.75 MB). Please use a smaller image.",
+            )
 
-    if len(image_bytes) > BEDROCK_MAX_IMAGE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail="Image is too large for analysis (max 3.75 MB). Please compress or resize the image.",
-        )
+        image_content_blocks.append({
+            "image": {"format": "jpeg", "source": {"bytes": jpeg_bytes}}
+        })
 
-    # 3. Call Bedrock via Converse API
+    # 2. Call Bedrock via Converse API
+    content = image_content_blocks + [{"text": PROMPT}]
     try:
         bedrock_response = bedrock.converse(
             modelId=BEDROCK_MODEL_ID,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "image": {
-                                "format": media_format,
-                                "source": {"bytes": image_bytes},
-                            }
-                        },
-                        {"text": PROMPT},
-                    ],
-                }
-            ],
+            messages=[{"role": "user", "content": content}],
             inferenceConfig={"maxTokens": 1024},
         )
     except Exception as e:
