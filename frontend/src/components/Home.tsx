@@ -5,6 +5,9 @@ import { Link } from "react-router-dom";
 import { LayoutGroup, motion } from "framer-motion";
 import { TextRotate } from "@/components/ui/text-rotate";
 import Floating, { FloatingElement } from "@/components/ui/parallax-floating";
+import ParallaxSection from "./feature-section";
+import Testimonials from "./testimonials";
+import AppGrid from "./app-demo";
 
 const exampleImages = [
   {
@@ -56,7 +59,7 @@ const exampleImages = [
   },
 ];
 
-export default function Home() {
+function Hero() {
   return (
     <section className="w-full h-screen overflow-hidden md:overflow-visible flex flex-col items-center justify-center relative">
       <Floating sensitivity={-0.5} className="h-full">
@@ -216,5 +219,16 @@ export default function Home() {
         </div>
       </div>
     </section>
+  );
+}
+
+export default function Home() {
+  return (
+    <>
+      <Hero />
+      <ParallaxSection />
+      <AppGrid />
+      <Testimonials />
+    </>
   );
 }
