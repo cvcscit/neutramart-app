@@ -178,7 +178,7 @@ function DesktopSection({
           style={{ y: ghostY }}
           className={`
             pointer-events-none select-none absolute font-black
-            text-[28vw] leading-none text-green-700/[0.15]
+            text-[28vw] leading-none text-green-700/[0.4]
             ${section.reverse ? "-right-[4vw] top-[-8%]" : "-left-[4vw] top-[-8%]"}
           `}
         >
@@ -268,7 +268,7 @@ function DesktopSection({
         {index < sections.length - 1 && (
           <motion.div
             style={{ scaleX: useTransform(sp, [0.75, 1], [0, 1]) }}
-            className="absolute bottom-0 origin-left left-[8%] right-[8%] h-px lg:bg-border xl:bg-border"
+            className="absolute bottom-0 origin-left left-[8%] right-[8%] h-px"
           />
         )}
       </div>
