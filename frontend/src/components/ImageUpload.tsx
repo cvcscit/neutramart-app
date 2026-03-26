@@ -1,6 +1,6 @@
-import useImageAnalysis from "../../hooks/useImageAnalysis";
-import useDropzone from "../../hooks/useDropzone";
-import NutritionAnalysis from "../NutritionAnalysis/NutritionAnalysis";
+import useImageAnalysis from "../hooks/useImageAnalysis";
+import useDropzone from "../hooks/useDropzone";
+import NutritionAnalysis from "./NutritionAnalysis/NutritionAnalysis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Camera, Eye, Loader2, Upload, X } from "lucide-react";
+import { Camera, Eye, Loader2, Plus, Upload, X } from "lucide-react";
 
 type Props = {
   onScanComplete?: () => void;
@@ -18,16 +18,18 @@ type Props = {
 
 export default function ImageUpload({ onScanComplete }: Props) {
   const {
-    preview,
+    files,
+    previews,
     progress,
     status,
     errorMsg,
     analysis,
+    maxImages,
     fileInputRef,
     handleFileChange,
     handleRemove,
     handleUpload,
-    handleFile,
+    addFiles,
     cameraOpen,
     openCamera,
     closeCamera,
@@ -36,11 +38,16 @@ export default function ImageUpload({ onScanComplete }: Props) {
     canvasRef,
   } = useImageAnalysis(onScanComplete);
 
-  const { dragging, onDrop, onDragOver, onDragLeave } = useDropzone((file) => {
-    handleFile(file);
-  });
+  const { dragging, onDrop, onDragOver, onDragLeave } = useDropzone(
+    (dropped) => {
+      addFiles(dropped);
+    },
+  );
 
   const isLoading = status === "uploading" || status === "analyzing";
+  const hasImages = previews.length > 0;
+  const canAddMore =
+    previews.length < maxImages && !isLoading && status !== "success";
 
   return (
     <div className="my-15 container">
@@ -59,14 +66,14 @@ export default function ImageUpload({ onScanComplete }: Props) {
             Food Analysis &amp; Nutrition
           </CardTitle>
           <CardDescription>
-            Upload food images to get detailed nutritional information, calorie
-            counts, and ingredient analysis powered by AI
+            Upload up to {maxImages} food images to get detailed nutritional
+            information powered by AI
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {/* ── Dropzone or file-item row ── */}
-          {!preview ? (
+          {/* ── Dropzone (shown when no images or can add more) ── */}
+          {!hasImages ? (
             <div
               className={[
                 "border-2 border-dashed rounded-lg p-8 flex flex-col items-center gap-1 cursor-pointer transition-colors",
@@ -83,6 +90,7 @@ export default function ImageUpload({ onScanComplete }: Props) {
               <input
                 type="file"
                 accept="image/*"
+                multiple
                 ref={fileInputRef}
                 onChange={handleFileChange}
                 hidden
@@ -91,10 +99,10 @@ export default function ImageUpload({ onScanComplete }: Props) {
                 <Upload className="size-6 text-muted-foreground" />
               </div>
               <p className="font-medium text-sm">
-                Drag &amp; drop a food image here
+                Drag &amp; drop food images here
               </p>
               <p className="text-muted-foreground text-xs">
-                Or click to browse (up to 4 MB)
+                Or click to browse · up to {maxImages} images · 4 MB each
               </p>
               <Button
                 type="button"
@@ -111,7 +119,7 @@ export default function ImageUpload({ onScanComplete }: Props) {
               </Button>
             </div>
           ) : (
-            /* ── Uploaded file row + results ── */
+            /* ── Image grid + results ── */
             <div className="space-y-3">
               {/* progress bar */}
               {isLoading && (
@@ -125,47 +133,74 @@ export default function ImageUpload({ onScanComplete }: Props) {
                 </div>
               )}
 
-              {/* file item row */}
-              <div className="flex items-center gap-2 border rounded-lg px-3 py-2.5">
-                <div className="relative size-10 shrink-0">
-                  <img
-                    src={preview}
-                    alt="Food preview"
-                    className="size-10 rounded object-cover"
-                  />
-                </div>
-                <div className="flex flex-col flex-1 min-w-0 gap-0.5">
-                  <span className="text-sm font-medium truncate">
-                    Selected image
-                  </span>
-                  {isLoading && (
-                    <span className="text-xs text-muted-foreground">
-                      {status === "uploading"
-                        ? `Uploading… ${progress}%`
-                        : "Analyzing food image…"}
-                    </span>
-                  )}
-                  {status === "success" && (
-                    <span className="text-xs text-green-600">
-                      Analysis complete ✓
-                    </span>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-7 shrink-0"
-                  onClick={handleRemove}
-                  disabled={isLoading}
-                  title={status === "success" ? "Upload another" : "Remove"}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <X className="h-4 w-4" />
-                  )}
-                </Button>
+              {/* image thumbnails grid */}
+              <div className="flex flex-wrap gap-2">
+                {previews.map((src, i) => (
+                  <div
+                    key={i}
+                    className="relative size-20 rounded-lg overflow-hidden border group"
+                  >
+                    <img
+                      src={src}
+                      alt={`Food image ${i + 1}`}
+                      className="size-20 object-cover"
+                    />
+                    {!isLoading && status !== "success" && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(i)}
+                        className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="size-5 text-white" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Add more button */}
+                {canAddMore && (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="size-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center gap-1 text-muted-foreground hover:border-muted-foreground/50 hover:bg-muted/30 transition-colors"
+                  >
+                    <Plus className="size-5" />
+                    <span className="text-xs">Add</span>
+                  </button>
+                )}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  hidden
+                />
+              </div>
+
+              {/* status line */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  {isLoading
+                    ? status === "uploading"
+                      ? `Uploading… ${progress}%`
+                      : "Analyzing food images…"
+                    : status === "success"
+                      ? `Analysis complete ✓`
+                      : `${files.length} image${files.length > 1 ? "s" : ""} selected`}
+                </span>
+                {!isLoading && status !== "success" && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs text-muted-foreground"
+                    onClick={() => handleRemove()}
+                  >
+                    Remove all
+                  </Button>
+                )}
               </div>
 
               {/* nutrition results */}
@@ -209,7 +244,7 @@ export default function ImageUpload({ onScanComplete }: Props) {
                   size="sm"
                   className="mt-2"
                   onClick={openCamera}
-                  disabled={isLoading || !!preview}
+                  disabled={isLoading || (!canAddMore && hasImages)}
                 >
                   <Camera className="mr-2 h-4 w-4" />
                   Open Camera
@@ -260,7 +295,7 @@ export default function ImageUpload({ onScanComplete }: Props) {
           )}
 
           {/* ── Analyze button ── */}
-          {preview && status !== "success" && (
+          {hasImages && status !== "success" && (
             <Button
               type="button"
               className="w-full"
@@ -273,12 +308,14 @@ export default function ImageUpload({ onScanComplete }: Props) {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {status === "uploading"
                     ? `Uploading… ${progress}%`
-                    : "Analyzing Image & Getting Nutrition Data…"}
+                    : "Analyzing Images & Getting Nutrition Data…"}
                 </>
               ) : (
                 <>
                   <Eye className="mr-2 h-4 w-4" />
-                  Analyze Image &amp; Get Nutrition Info
+                  Analyze{" "}
+                  {files.length > 1 ? `${files.length} Images` : "Image"} &amp;
+                  Get Nutrition Info
                 </>
               )}
             </Button>
@@ -291,7 +328,7 @@ export default function ImageUpload({ onScanComplete }: Props) {
               variant="outline"
               className="w-full"
               size="lg"
-              onClick={handleRemove}
+              onClick={() => handleRemove()}
             >
               Upload Another Image
             </Button>
