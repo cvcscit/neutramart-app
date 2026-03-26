@@ -9,41 +9,36 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useAuth } from "../../contexts/AuthContext";
+import { useAuth } from "@/contexts/AuthContext";
+import logo from "@/assets/images/logo.jpeg";
 
 export default function Navbar() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { user, handleLogout } = useAuth();
   const navigate = useNavigate();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  function logout() {
-    handleLogout();
-    navigate("/login");
-  }
-
   const isAuthenticated = !!user;
 
+  const logout = () => {
+    handleLogout();
+    navigate("/");
+  };
+
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white">
+    <header className="sticky top-0 z-100 w-full border-b bg-white">
       <div className="container flex h-16 items-center justify-between px-4">
-        {/* ── Logo ── */}
+        {/* Logo */}
         <Link
           to={isAuthenticated ? "/dashboard" : "/"}
           className="flex items-center gap-3"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
         >
-          <img
-            src="/images/logo.jpeg"
-            alt="Logo"
-            width={40}
-            height={40}
-            className="w-10 rounded"
-          />
+          <img src={logo} alt="Logo" width={40} height={40} className="w-10" />
           <span className="text-2xl font-semibold text-green-700">
             NutraSmart
           </span>
         </Link>
 
-        {/* ── Desktop Navigation ── */}
+        {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-6">
           {isAuthenticated ? (
             <>
@@ -59,16 +54,8 @@ export default function Navbar() {
               >
                 Upload
               </Link>
-              <Link
-                to="/feedback"
-                className="text-sm font-medium text-gray-700 hover:text-green-700 transition-colors"
-              >
-                Feedback
-              </Link>
               <a
                 href="https://sylphiaconsulting.com/contact/"
-                target="_blank"
-                rel="noreferrer"
                 className="text-sm font-medium text-gray-700 hover:text-green-700 transition-colors"
               >
                 Contact
@@ -81,22 +68,13 @@ export default function Navbar() {
             <>
               <a
                 href="https://sylphiaconsulting.com/our-mission/"
-                target="_blank"
-                rel="noreferrer"
                 className="text-sm font-medium text-gray-700 hover:text-green-700 transition-colors"
               >
                 More About Us
               </a>
-              <Link
-                to="/feedback"
-                className="text-sm font-medium text-gray-700 hover:text-green-700 transition-colors"
-              >
-                Feedback
-              </Link>
+
               <a
                 href="https://sylphiaconsulting.com/contact/"
-                target="_blank"
-                rel="noreferrer"
                 className="text-sm font-medium text-gray-700 hover:text-green-700 transition-colors"
               >
                 Contact
@@ -108,7 +86,7 @@ export default function Navbar() {
           )}
         </nav>
 
-        {/* ── Mobile Menu ── */}
+        {/* Mobile Menu */}
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <SheetTrigger asChild className="md:hidden">
             <Button variant="ghost" size="icon">
@@ -135,7 +113,7 @@ export default function Navbar() {
                     onClick={() => setMobileMenuOpen(false)}
                     className="text-base font-medium text-gray-700 hover:text-green-700 transition-colors py-2"
                   >
-                    Upload
+                    Profile
                   </Link>
                   <Link
                     to="/feedback"
@@ -146,8 +124,6 @@ export default function Navbar() {
                   </Link>
                   <a
                     href="https://sylphiaconsulting.com/contact/"
-                    target="_blank"
-                    rel="noreferrer"
                     onClick={() => setMobileMenuOpen(false)}
                     className="text-base font-medium text-gray-700 hover:text-green-700 transition-colors py-2"
                   >
@@ -168,8 +144,6 @@ export default function Navbar() {
                 <>
                   <a
                     href="https://sylphiaconsulting.com/our-mission/"
-                    target="_blank"
-                    rel="noreferrer"
                     onClick={() => setMobileMenuOpen(false)}
                     className="text-base font-medium text-gray-700 hover:text-green-700 transition-colors py-2"
                   >
@@ -184,17 +158,13 @@ export default function Navbar() {
                   </Link>
                   <a
                     href="https://sylphiaconsulting.com/contact/"
-                    target="_blank"
-                    rel="noreferrer"
                     onClick={() => setMobileMenuOpen(false)}
                     className="text-base font-medium text-gray-700 hover:text-green-700 transition-colors py-2"
                   >
                     Contact
                   </a>
                   <Button asChild className="w-full mt-4">
-                    <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                      Login
-                    </Link>
+                    <Link to="/login">Login</Link>
                   </Button>
                 </>
               )}
