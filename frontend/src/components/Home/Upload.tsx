@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import Navbar from "../Navbar/Navbar";
+import Navbar from "../Navbar";
 import ImageUpload from "../ImageUpload";
 import WeeklySummary from "../WeeklySummary/WeeklySummary";
 import Chat from "../Chat/Chat";
