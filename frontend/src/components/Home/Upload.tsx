@@ -5,7 +5,7 @@ import ImageUpload from "../ImageUpload/ImageUpload";
 import WeeklySummary from "../WeeklySummary/WeeklySummary";
 import Chat from "../Chat/Chat";
 
-export default function Home() {
+export default function Upload() {
   const { user } = useAuth();
   const [scanCount, setScanCount] = useState(0);
 
