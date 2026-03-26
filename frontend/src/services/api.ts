@@ -13,7 +13,7 @@ type PresignResponse = {
   key: string;
 };
 
-type AnalyzeRequest = {
+type AnalyzeImageItem = {
   key: string;
   contentType: string;
 };
@@ -83,7 +83,7 @@ export function uploadToS3(
 
 export async function analyzeFood(
   token: string,
-  { key, contentType }: AnalyzeRequest,
+  images: AnalyzeImageItem[],
 ): Promise<any> {
   const res = await fetch(`${API_URL}/analyze`, {
     method: "POST",
@@ -92,8 +92,7 @@ export async function analyzeFood(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      key,
-      content_type: contentType,
+      images: images.map(({ key, contentType }) => ({ key, content_type: contentType })),
     }),
   });
 
