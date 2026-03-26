@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 import Home from "./components/Home";
-import Upload from "./components/Home/Upload";
+import Upload from "./components/Upload";
 import Login from "./components/Login";
 import "./index.css";
 
