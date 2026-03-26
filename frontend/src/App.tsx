@@ -1,12 +1,13 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
-import Login from "./components/Login/Login";
-import Home from "./components/Home/Home";
+import Home from "./components/Home";
+import Upload from "./components/Home/Upload";
+import Login from "./components/Login";
 import "./index.css";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  return user ? <>{children}</> : <Navigate to="/login" replace />;
+  return user ? <>{children}</> : <Navigate to="/" replace />;
 }
 
 export default function App() {
@@ -15,20 +16,17 @@ export default function App() {
   return (
     <Routes>
       <Route
-        path="/login"
-        element={user ? <Navigate to="/dashboard" replace /> : <Login />}
+        path="/"
+        element={user ? <Navigate to="/dashboard" replace /> : <Home />}
       />
+      <Route path="/login" element={<Login />} />
       <Route
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <Home />
+            <Upload />
           </ProtectedRoute>
         }
-      />
-      <Route
-        path="/"
-        element={<Navigate to={user ? "/dashboard" : "/login"} replace />}
       />
       <Route
         path="*"
