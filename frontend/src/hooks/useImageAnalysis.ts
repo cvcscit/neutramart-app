@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { getPresignedUrl, uploadToS3, analyzeFood } from "../services/api";
 
@@ -9,6 +9,11 @@ type Status = "idle" | "uploading" | "analyzing" | "success" | "error";
 type LastScan = {
   previews: string[];
   analysis: Analysis;
+};
+
+type ImageItem = {
+  sig: string;
+  file: File;
 };
 
 const MAX_IMAGES = 5;
@@ -28,8 +33,11 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
 
   const lastScan = loadLastScan();
 
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>(lastScan?.previews || []);
+  const [items, setItems] = useState<ImageItem[]>([]);
+  const [generatedPreviews, setGeneratedPreviews] = useState<string[]>([]);
+  const [persistedPreviews, setPersistedPreviews] = useState<string[]>(
+    lastScan?.previews || [],
+  );
   const [progress, setProgress] = useState<number>(0);
   const [status, setStatus] = useState<Status>(lastScan ? "success" : "idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -43,28 +51,74 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const previewUrlMapRef = useRef<Map<string, string>>(new Map());
 
   // ── File helpers ────────────────────────────────────────────────────────────
+
+  const files = useMemo(() => items.map((it) => it.file), [items]);
+  const previews = useMemo(
+    () => (items.length ? generatedPreviews : persistedPreviews),
+    [generatedPreviews, items.length, persistedPreviews],
+  );
+
+  useEffect(() => {
+    const map = previewUrlMapRef.current;
+    const currentSigs = new Set(items.map((it) => it.sig));
+
+    // Create URLs for any new files
+    for (const it of items) {
+      if (!map.has(it.sig)) {
+        map.set(it.sig, URL.createObjectURL(it.file));
+      }
+    }
+
+    // Revoke URLs for removed files
+    for (const [sig, url] of map.entries()) {
+      if (!currentSigs.has(sig)) {
+        URL.revokeObjectURL(url);
+        map.delete(sig);
+      }
+    }
+
+    setGeneratedPreviews(items.map((it) => map.get(it.sig)!).filter(Boolean));
+  }, [items]);
+
+  useEffect(() => {
+    return () => {
+      const map = previewUrlMapRef.current;
+      for (const url of map.values()) URL.revokeObjectURL(url);
+      map.clear();
+    };
+  }, []);
+
+  function fileSig(f: File) {
+    return `${f.name}__${f.size}__${f.lastModified}__${f.type}`;
+  }
 
   function addFiles(incoming: File[]) {
     const valid = incoming.filter((f) => f.type.startsWith("image/"));
     if (!valid.length) return;
 
-    setFiles((prev) => {
-      const combined = [...prev, ...valid].slice(0, MAX_IMAGES);
-      setPreviews((prevPreviews) => {
-        const newPreviews = valid.slice(0, MAX_IMAGES - prev.length).map((f) =>
-          URL.createObjectURL(f)
-        );
-        return [...prevPreviews, ...newPreviews].slice(0, MAX_IMAGES);
-      });
-      return combined;
+    setItems((prev) => {
+      const existing = new Set(prev.map((p) => p.sig));
+      const next: ImageItem[] = [...prev];
+
+      for (const f of valid) {
+        if (next.length >= MAX_IMAGES) break;
+        const sig = fileSig(f);
+        if (existing.has(sig)) continue;
+        existing.add(sig);
+        next.push({ sig, file: f });
+      }
+
+      return next;
     });
 
     setStatus("idle");
     setProgress(0);
     setErrorMsg("");
     setAnalysis(null);
+    setPersistedPreviews([]);
     localStorage.removeItem("last_scan");
   }
 
@@ -83,16 +137,16 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
 
   function handleRemove(index?: number) {
     if (index !== undefined) {
-      setFiles((prev) => prev.filter((_, i) => i !== index));
-      setPreviews((prev) => prev.filter((_, i) => i !== index));
-      if (files.length <= 1) {
+      setItems((prev) => prev.filter((_, i) => i !== index));
+      if (items.length <= 1) {
         setStatus("idle");
         setAnalysis(null);
+        setPersistedPreviews([]);
         localStorage.removeItem("last_scan");
       }
     } else {
-      setFiles([]);
-      setPreviews([]);
+      setItems([]);
+      setPersistedPreviews([]);
       setStatus("idle");
       setProgress(0);
       setErrorMsg("");

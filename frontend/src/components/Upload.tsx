@@ -12,11 +12,7 @@ export default function Upload() {
   return (
     <div className="home-page">
       <main className="home-layout">
-        <div className="home-left">
-          <h2 className="flex text-4xl underline">Hello, {user?.firstName}</h2>
-          <p className="home-subtitle">Upload an image to get started</p>
-          <ImageUpload onScanComplete={() => setScanCount((c) => c + 1)} />
-        </div>
+        <ImageUpload onScanComplete={() => setScanCount((c) => c + 1)} />
         <div className="home-right">
           <WeeklySummary refreshTrigger={scanCount} />
         </div>

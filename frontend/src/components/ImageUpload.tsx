@@ -50,7 +50,7 @@ export default function ImageUpload({ onScanComplete }: Props) {
     previews.length < maxImages && !isLoading && status !== "success";
 
   return (
-    <div className="my-15 container">
+    <div className="my-15 container m-auto">
       {/* ── Brand header ── */}
       <div className="text-center mb-8 z-10 relative">
         <h1 className="text-7xl md:text-8xl lg:text-9xl inline mr-8 font-medium">

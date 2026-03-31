@@ -25,7 +25,7 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-100 w-full border-b bg-white">
-      <div className="container flex h-16 items-center justify-between px-4">
+      <div className="flex h-16 items-center justify-between px-4">
         {/* Logo */}
         <Link
           to={isAuthenticated ? "/dashboard" : "/"}
