@@ -6,11 +6,6 @@ type Analysis = any;
 
 type Status = "idle" | "uploading" | "analyzing" | "success" | "error";
 
-type LastScan = {
-  previews: string[];
-  analysis: Analysis;
-};
-
 type ImageItem = {
   sig: string;
   file: File;
@@ -18,31 +13,17 @@ type ImageItem = {
 
 const MAX_IMAGES = 5;
 
-function loadLastScan(): LastScan | null {
-  try {
-    const saved = localStorage.getItem("last_scan");
-    if (!saved) return null;
-    return JSON.parse(saved);
-  } catch {
-    return null;
-  }
-}
-
 export default function useImageAnalysis(onScanComplete?: () => void) {
   const { user, token } = useAuth();
 
-  const lastScan = loadLastScan();
-
   const [items, setItems] = useState<ImageItem[]>([]);
   const [generatedPreviews, setGeneratedPreviews] = useState<string[]>([]);
-  const [persistedPreviews, setPersistedPreviews] = useState<string[]>(
-    lastScan?.previews || [],
-  );
   const [progress, setProgress] = useState<number>(0);
-  const [status, setStatus] = useState<Status>(lastScan ? "success" : "idle");
+  const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string>("");
-  const [analysis, setAnalysis] = useState<Analysis | null>(lastScan?.analysis || null);
-
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  
+  
   // Camera state
   const [cameraOpen, setCameraOpen] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -56,10 +37,7 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
   // ── File helpers ────────────────────────────────────────────────────────────
 
   const files = useMemo(() => items.map((it) => it.file), [items]);
-  const previews = useMemo(
-    () => (items.length ? generatedPreviews : persistedPreviews),
-    [generatedPreviews, items.length, persistedPreviews],
-  );
+  const previews = useMemo(() => generatedPreviews, [generatedPreviews]);
 
   useEffect(() => {
     const map = previewUrlMapRef.current;
@@ -118,8 +96,6 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
     setProgress(0);
     setErrorMsg("");
     setAnalysis(null);
-    setPersistedPreviews([]);
-    localStorage.removeItem("last_scan");
   }
 
   // Legacy single-file interface (used by dropzone + camera)
@@ -141,17 +117,13 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
       if (items.length <= 1) {
         setStatus("idle");
         setAnalysis(null);
-        setPersistedPreviews([]);
-        localStorage.removeItem("last_scan");
       }
     } else {
       setItems([]);
-      setPersistedPreviews([]);
       setStatus("idle");
       setProgress(0);
       setErrorMsg("");
       setAnalysis(null);
-      localStorage.removeItem("last_scan");
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -193,14 +165,6 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
 
       setAnalysis(analysisData);
       setStatus("success");
-
-      // Persist last scan
-      try {
-        localStorage.setItem(
-          "last_scan",
-          JSON.stringify({ previews, analysis: analysisData })
-        );
-      } catch {}
 
       if (onScanComplete) setTimeout(() => onScanComplete(), 5000);
     } catch (err: any) {
