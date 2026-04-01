@@ -3,6 +3,7 @@ import { useAuth } from "./contexts/AuthContext";
 import Home from "./components/Home";
 import Upload from "./components/Upload";
 import Login from "./components/Login";
+import Dashboard from "./components/Dashboard";
 import "./index.css";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -21,12 +22,15 @@ export default function App() {
       />
       <Route path="/login" element={<Login />} />
       <Route
-        path="/dashboard"
+        path="/upload"
         element={
           <ProtectedRoute>
             <Upload />
           </ProtectedRoute>
         }
+      />
+      <Route path="/dashboard" element={
+        <ProtectedRoute><Dashboard/></ProtectedRoute>}
       />
       <Route
         path="*"
