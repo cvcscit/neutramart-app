@@ -16,7 +16,7 @@ if [ ! -f resources.env ]; then
 fi
 source resources.env
 
-PROFILE="nutrasmart"
+PROFILE="neutramart"
 export AWS_PROFILE="$PROFILE"
 
 ECR_REPO="${PROJECT}-backend"

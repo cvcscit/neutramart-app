@@ -167,7 +167,7 @@ def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_curre
         s3.put_object(
             Bucket=S3_BUCKET_NAME,
             Key=scan_key,
-            Body=json.dumps({**analysis, "timestamp": timestamp, "image_key": body.key}),
+            Body=json.dumps({**analysis, "timestamp": timestamp, "image_keys": [img.key for img in body.images]}),
             ContentType="application/json",
         )
     except Exception:
