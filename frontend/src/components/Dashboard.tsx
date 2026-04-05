@@ -66,7 +66,17 @@ import {
   Eye,
   X,
   ImageIcon,
+  ChevronDown,
+  ChevronUp,
+  BookOpen,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import ReactMarkdown from "react-markdown";
+import { getWeeklySummary } from "../services/api";
 import {
   format,
   subDays,
@@ -230,6 +240,9 @@ export default function ProfilePage() {
     url: string;
     name: string;
   } | null>(null);
+  const [weeklyReport, setWeeklyReport] = useState<string | null>(null);
+  const [weeklyLoading, setWeeklyLoading] = useState(false);
+  const [weeklyOpen, setWeeklyOpen] = useState(false);
 
   // Fixed date range state using proper DateRange type
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
@@ -301,6 +314,15 @@ export default function ProfilePage() {
       fetchMeals();
     }
   }, [period, dateRange]);
+
+  useEffect(() => {
+    if (!token) return;
+    setWeeklyLoading(true);
+    getWeeklySummary(token)
+      .then((data) => setWeeklyReport(data.summary ?? null))
+      .catch(() => setWeeklyReport(null))
+      .finally(() => setWeeklyLoading(false));
+  }, [token]);
 
   const formatChartData = (): Array<{
     date: string;
@@ -638,6 +660,45 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* 7-Day Eating Summary */}
+      {(weeklyReport || weeklyLoading) && (
+        <Card className="mb-8">
+          <Collapsible open={weeklyOpen} onOpenChange={setWeeklyOpen}>
+            <CollapsibleTrigger asChild>
+              <CardHeader className="cursor-pointer select-none hover:bg-muted/30 transition-colors rounded-t-xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <BookOpen className="h-5 w-5 text-muted-foreground" />
+                      7-Day Eating Summary
+                    </CardTitle>
+                    <CardDescription>
+                      AI-generated analysis of your recent eating habits
+                    </CardDescription>
+                  </div>
+                  {weeklyOpen ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                  )}
+                </div>
+              </CardHeader>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <CardContent className="pt-0">
+                {weeklyLoading ? (
+                  <p className="text-sm text-muted-foreground py-4">Loading summary…</p>
+                ) : (
+                  <div className="max-h-[500px] overflow-y-auto pr-2 text-sm leading-relaxed [&_h1]:text-lg [&_h1]:font-bold [&_h1]:mt-4 [&_h1]:mb-2 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2 [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_h4]:font-semibold [&_h4]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_p]:mb-2 [&_strong]:font-semibold">
+                    <ReactMarkdown>{weeklyReport ?? ""}</ReactMarkdown>
+                  </div>
+                )}
+              </CardContent>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+      )}
 
       {/* Charts and Meals Table */}
       <Tabs defaultValue="calories" className="mb-8">

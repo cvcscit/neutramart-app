@@ -62,8 +62,9 @@ export interface NutritionData {
     objects?: string[];
     dishes?: Dish[];
     totalNutrition?: TotalNutrition;
+    recommendation?: string;
   }
-  
+
   // ─── What AddToProfileDialog receives as `analysisResult` ────────────────────
   // Intentionally looser than SingleAnalysis so it can be built for both
   // "save one image" and "save all images" scenarios.

@@ -76,15 +76,16 @@ function flatResponseToAnalysis(
   };
 
   return {
-    imageKey:       `img-${index}`,
-    imageUrl:       preview,
-    imageName:      file?.name ?? `Image ${index + 1}`,
-    description:    (r.description as string) ?? "",
-    confidence:     (r.confidence  as number) ?? 0.9,
-    allergens:      (r.allergens   as string[]) ?? [],
-    objects:        (r.objects     as string[]) ?? [],
-    dishes:         [dish],
+    imageKey:        `img-${index}`,
+    imageUrl:        preview,
+    imageName:       file?.name ?? `Image ${index + 1}`,
+    description:     (r.description     as string)   ?? "",
+    confidence:      (r.confidence      as number)   ?? 0.9,
+    allergens:       (r.allergens       as string[]) ?? [],
+    objects:         (r.objects         as string[]) ?? [],
+    dishes:          [dish],
     totalNutrition,
+    recommendation:  (r.recommendation  as string)   ?? undefined,
   };
 }
 
@@ -133,8 +134,9 @@ function buildAnalyses(
       confidence:     (r.confidence  as number)               ?? 0.9,
       allergens:      (r.allergens   as string[])             ?? [],
       objects:        (r.objects     as string[])             ?? [],
-      dishes:         (r.dishes      as SingleAnalysis["dishes"]) ?? [],
-      totalNutrition: (r.totalNutrition as TotalNutrition | undefined),
+      dishes:         (r.dishes          as SingleAnalysis["dishes"]) ?? [],
+      totalNutrition: (r.totalNutrition  as TotalNutrition | undefined),
+      recommendation: (r.recommendation as string | undefined),
     }));
   }
 

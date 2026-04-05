@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronUp, ShieldAlert, Utensils } from "lucide-react";
+import { ChevronDown, ChevronUp, Lightbulb, ShieldAlert, Utensils } from "lucide-react";
 
 import type { NutritionAnalysisProps } from "@/types";
 
@@ -194,6 +194,23 @@ export default function NutritionAnalysis({
                             </Badge>
                           ))}
                         </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Recommendation */}
+                  {analysis.recommendation && (
+                    <Card className="border-green-200 bg-green-50">
+                      <CardContent className="py-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Lightbulb className="h-4 w-4 text-green-700" />
+                          <p className="text-sm font-semibold text-green-800">
+                            Recommendation
+                          </p>
+                        </div>
+                        <p className="text-sm leading-relaxed text-green-900">
+                          {analysis.recommendation}
+                        </p>
                       </CardContent>
                     </Card>
                   )}
