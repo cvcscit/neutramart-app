@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext";
 import {
   Card,
   CardContent,
@@ -112,6 +113,16 @@ interface Meal {
   meal_dishes: any[];
 }
 
+/** Parse stored timestamps like "20260404T123456Z" or ISO strings into a Date. */
+function parseLoggedAt(s: string): Date {
+  // Convert YYYYMMDDTHHMMSSz → 2026-04-04T12:34:56Z
+  const compact = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(s);
+  if (compact) {
+    return new Date(`${compact[1]}-${compact[2]}-${compact[3]}T${compact[4]}:${compact[5]}:${compact[6]}Z`);
+  }
+  return new Date(s);
+}
+
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
 
 const MEAL_TYPE_COLORS = {
@@ -188,7 +199,7 @@ function MealCard({ meal, onImageClick }: MealCardProps) {
       <div className="flex-1">
         <p className="font-medium text-sm">{meal.meal_name}</p>
         <p className="text-xs text-muted-foreground">
-          {format(new Date(meal.logged_at), "MMM dd, HH:mm")} • {meal.meal_type}
+          {format(parseLoggedAt(meal.logged_at), "MMM dd, HH:mm")} • {meal.meal_type}
         </p>
       </div>
       <Badge variant="secondary" className="text-xs">
@@ -199,6 +210,7 @@ function MealCard({ meal, onImageClick }: MealCardProps) {
 }
 
 export default function ProfilePage() {
+  const { token } = useAuth();
   // Get user's timezone
   const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const formatter: TooltipProps<number, string>["formatter"] = (value, name) => [
@@ -245,7 +257,9 @@ export default function ProfilePage() {
         timezone: userTimezone,
       });
 
-      const response = await fetch(`/api/nutrition/summary?${params}`);
+      const response = await fetch(`/api/nutrition/summary?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (response.ok) {
         const result = await response.json();
         console.log("Raw API response:", result);
@@ -269,7 +283,9 @@ export default function ProfilePage() {
         limit: "100", // Increased limit to show more meals
       });
 
-      const response = await fetch(`/api/meals?${params}`);
+      const response = await fetch(`/api/meals?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (response.ok) {
         const result = await response.json();
         setMeals(result.meals || []);
@@ -875,12 +891,12 @@ export default function ProfilePage() {
                             <div className="text-sm">
                               <div>
                                 {format(
-                                  new Date(meal.logged_at),
+                                  parseLoggedAt(meal.logged_at),
                                   "MMM dd, yyyy",
                                 )}
                               </div>
                               <div className="text-muted-foreground text-xs">
-                                {format(new Date(meal.logged_at), "HH:mm")}
+                                {format(parseLoggedAt(meal.logged_at), "HH:mm")}
                               </div>
                             </div>
                           </TableCell>
