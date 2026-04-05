@@ -2,7 +2,6 @@ import io
 import json
 import logging
 import re
-import threading
 from datetime import datetime, timedelta, timezone
 from PIL import Image
 
@@ -174,13 +173,6 @@ def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_curre
     except Exception:
         pass  # Don't fail the request if scan save fails
 
-    # Trigger weekly summary generation in background
-    threading.Thread(
-        target=_generate_weekly_summary,
-        args=(user_id,),
-        daemon=True,
-    ).start()
-
     return analysis
 
 
@@ -237,67 +229,79 @@ def _get_health_profile(user_id: str) -> str:
 
 def _generate_weekly_summary(user_id: str):
     """Fetch last 7 days of scans and generate a weekly eating summary."""
+    prefix = f"users/{user_id}/scans/"
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+
+    # List all scan files for this user
+    response = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
+    if "Contents" not in response:
+        raise ValueError(f"No scans found for {user_id}")
+
+    # Filter to last 7 days and fetch each scan
+    scans = []
+    for obj in response["Contents"]:
+        filename = obj["Key"].split("/")[-1].replace(".json", "")
+        try:
+            scan_time = datetime.strptime(filename, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if scan_time >= cutoff:
+            scan_data = s3.get_object(Bucket=S3_BUCKET_NAME, Key=obj["Key"])
+            scans.append(json.loads(scan_data["Body"].read()))
+
+    if not scans:
+        raise ValueError(f"No scans in last 7 days for {user_id}")
+
+    # Build the prompt with all scan data
+    health_section = _get_health_profile(user_id)
+    records_text = ""
+    for scan in sorted(scans, key=lambda x: x.get("timestamp", "")):
+        records_text += (
+            f"- Date: {scan.get('timestamp', 'unknown')}\n"
+            f"  Food: {scan.get('description', 'N/A')}\n"
+            f"  Calories: {scan.get('calories', 'N/A')}, "
+            f"Protein: {scan.get('protein', 'N/A')}, "
+            f"Carbs: {scan.get('carbs', 'N/A')}, "
+            f"Fat: {scan.get('fat', 'N/A')}, "
+            f"Fiber: {scan.get('fiber', 'N/A')}, "
+            f"Sugar: {scan.get('sugar', 'N/A')}\n\n"
+        )
+
+    full_prompt = WEEKLY_SUMMARY_PROMPT.format(health_profile_section=health_section) + records_text
+
+    logger.info(f"Generating weekly summary for {user_id} with {len(scans)} scans")
+
+    # Call Bedrock for summary
+    summary_response = bedrock.converse(
+        modelId=BEDROCK_MODEL_ID,
+        messages=[{"role": "user", "content": [{"text": full_prompt}]}],
+        inferenceConfig={"maxTokens": 2048},
+    )
+
+    summary_text = summary_response["output"]["message"]["content"][0]["text"]
+
+    # Save to S3
+    summary_key = f"users/{user_id}/weekly_summary.txt"
+    s3.put_object(
+        Bucket=S3_BUCKET_NAME,
+        Key=summary_key,
+        Body=summary_text,
+        ContentType="text/plain",
+    )
+    logger.info(f"Weekly summary saved for {user_id}")
+
+
+@router.post("/weekly-summary/generate")
+@limiter.limit("5/minute")
+def generate_weekly_summary(request: Request, _user=Depends(get_current_user)):
+    user_email = _user["email"]
+    user_id = user_email.replace("@", "_at_").replace(".", "_")
     try:
-        prefix = f"users/{user_id}/scans/"
-        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-
-        # List all scan files for this user
-        response = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
-        if "Contents" not in response:
-            return
-
-        # Filter to last 7 days and fetch each scan
-        scans = []
-        for obj in response["Contents"]:
-            # Extract timestamp from key: users/{id}/scans/20260319T120000Z.json
-            filename = obj["Key"].split("/")[-1].replace(".json", "")
-            try:
-                scan_time = datetime.strptime(filename, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-            except ValueError:
-                continue
-            if scan_time >= cutoff:
-                scan_data = s3.get_object(Bucket=S3_BUCKET_NAME, Key=obj["Key"])
-                scans.append(json.loads(scan_data["Body"].read()))
-
-        if not scans:
-            return
-
-        # Build the prompt with all scan data
-        health_section = _get_health_profile(user_id)
-        records_text = ""
-        for scan in sorted(scans, key=lambda x: x.get("timestamp", "")):
-            records_text += (
-                f"- Date: {scan.get('timestamp', 'unknown')}\n"
-                f"  Food: {scan.get('description', 'N/A')}\n"
-                f"  Calories: {scan.get('calories', 'N/A')}, "
-                f"Protein: {scan.get('protein', 'N/A')}, "
-                f"Carbs: {scan.get('carbs', 'N/A')}, "
-                f"Fat: {scan.get('fat', 'N/A')}, "
-                f"Fiber: {scan.get('fiber', 'N/A')}, "
-                f"Sugar: {scan.get('sugar', 'N/A')}\n\n"
-            )
-
-        full_prompt = WEEKLY_SUMMARY_PROMPT.format(health_profile_section=health_section) + records_text
-
-        # Call Bedrock for summary
-        summary_response = bedrock.converse(
-            modelId=BEDROCK_MODEL_ID,
-            messages=[{"role": "user", "content": [{"text": full_prompt}]}],
-            inferenceConfig={"maxTokens": 2048},
-        )
-
-        summary_text = summary_response["output"]["message"]["content"][0]["text"]
-
-        # Save to S3
-        summary_key = f"users/{user_id}/weekly_summary.txt"
-        s3.put_object(
-            Bucket=S3_BUCKET_NAME,
-            Key=summary_key,
-            Body=summary_text,
-            ContentType="text/plain",
-        )
+        _generate_weekly_summary(user_id)
+        return {"status": "ok"}
     except Exception as e:
         logger.error(f"Weekly summary generation failed for {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Weekly summary generation failed: {e}")
 
 
 @router.get("/weekly-summary")

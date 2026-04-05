@@ -134,6 +134,22 @@ export async function sendChatMessage(
   return res.json();
 }
 
+export async function generateWeeklySummary(token: string): Promise<any> {
+  const res = await fetch(`${API_URL}/weekly-summary/generate`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    const err = await jsonOrText(res);
+    throw new Error(err.detail || "Failed to generate weekly summary");
+  }
+
+  return res.json();
+}
+
 export async function getWeeklySummary(token: string): Promise<any> {
   const res = await fetch(`${API_URL}/weekly-summary`, {
     headers: {

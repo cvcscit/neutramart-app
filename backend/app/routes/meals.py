@@ -50,7 +50,7 @@ class TotalNutrition(BaseModel):
     carbs: float
     fat: float
     fiber: float
-    sodium: float
+    sugar: float = 0.0
 
 
 class SaveMealRequest(BaseModel):
@@ -123,25 +123,67 @@ def save_meal(
 
 # ─── GET /api/meals ───────────────────────────────────────────────────────────
 
-def _load_all_meals(uid: str) -> list[dict]:
-    """Fetch every meal JSON for this user from S3."""
-    prefix = f"users/{uid}/meals/"
+def _parse_num(val) -> float:
+    """Parse a numeric value from strings like '350 kcal', '25g', or a number."""
+    if isinstance(val, (int, float)):
+        return float(val)
+    if not val or val == "N/A":
+        return 0.0
+    import re
+    m = re.search(r"[\d.]+", str(val))
+    return float(m.group(0)) if m else 0.0
+
+
+def _scan_to_meal(scan: dict) -> dict:
+    """Convert a scan JSON into a meal-like dict so the dashboard can use it."""
+    return {
+        "meal_id": f"scan_{scan.get('timestamp', '')}",
+        "meal_name": scan.get("description", "Scanned meal"),
+        "meal_type": "other",
+        "description": scan.get("description", ""),
+        "image_url": "",
+        "logged_at": scan.get("timestamp", ""),
+        "total_nutrition": {
+            "calories": _parse_num(scan.get("calories")),
+            "protein": _parse_num(scan.get("protein")),
+            "carbs": _parse_num(scan.get("carbs")),
+            "fat": _parse_num(scan.get("fat")),
+            "fiber": _parse_num(scan.get("fiber")),
+            "sugar": _parse_num(scan.get("sugar")),
+        },
+        "dishes": [],
+    }
+
+
+def _load_s3_jsons(uid: str, folder: str) -> list[dict]:
+    """Fetch all JSON files from users/{uid}/{folder}/ in S3."""
+    prefix = f"users/{uid}/{folder}/"
     try:
         response = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
     except Exception as e:
-        logger.error(f"Failed to list meals for {uid}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch meals.")
+        logger.error(f"Failed to list {folder} for {uid}: {e}")
+        return []
 
     if "Contents" not in response:
         return []
 
-    meals = []
+    items = []
     for obj in response["Contents"]:
         try:
             data = s3.get_object(Bucket=S3_BUCKET_NAME, Key=obj["Key"])
-            meals.append(json.loads(data["Body"].read()))
+            items.append(json.loads(data["Body"].read()))
         except Exception as e:
-            logger.warning(f"Skipping unreadable meal {obj['Key']}: {e}")
+            logger.warning(f"Skipping unreadable {obj['Key']}: {e}")
+    return items
+
+
+def _load_all_meals(uid: str) -> list[dict]:
+    """Fetch meals AND scans for this user, returning unified meal-like dicts."""
+    meals = _load_s3_jsons(uid, "meals")
+    scans = _load_s3_jsons(uid, "scans")
+    # Convert scans to meal format
+    for scan in scans:
+        meals.append(_scan_to_meal(scan))
     return meals
 
 
@@ -160,7 +202,7 @@ def _flatten_meal(meal: dict) -> dict:
         "total_carbs": tn.get("carbs", 0),
         "total_fat": tn.get("fat", 0),
         "total_fiber": tn.get("fiber", 0),
-        "total_sodium": tn.get("sodium", 0),
+        "total_sugar": tn.get("sugar", 0),
         "meal_dishes": meal.get("dishes", []),
     }
 
@@ -256,7 +298,7 @@ def get_nutrition_summary(
         "total_carbs": 0.0,
         "total_fat": 0.0,
         "total_fiber": 0.0,
-        "total_sodium": 0.0,
+        "total_sugar": 0.0,
         "meal_count": 0,
     })
 
@@ -289,7 +331,7 @@ def get_nutrition_summary(
         b["total_carbs"]    += tn.get("carbs", 0)
         b["total_fat"]      += tn.get("fat", 0)
         b["total_fiber"]    += tn.get("fiber", 0)
-        b["total_sodium"]   += tn.get("sodium", 0)
+        b["total_sugar"]    += tn.get("sugar", 0)
         b["meal_count"]     += 1
 
     period_key_map = {

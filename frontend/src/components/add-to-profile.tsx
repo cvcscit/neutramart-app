@@ -54,10 +54,10 @@ function sumSelectedNutrition(dishes: Dish[], selectedIds: Set<number>) {
         carbs:    acc.carbs    + dish.nutrition.nf_total_carbohydrate,
         fat:      acc.fat      + dish.nutrition.nf_total_fat,
         fiber:    acc.fiber    + dish.nutrition.nf_dietary_fiber,
-        sodium:   acc.sodium   + (dish.nutrition.nf_sodium ?? 0),
+        sugar:    acc.sugar    + (dish.nutrition.nf_sugars ?? 0),
       };
     },
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sodium: 0 },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 },
   );
 }
 
@@ -380,9 +380,9 @@ export function AddToProfileDialog({
                   </div>
                   <div className="text-center">
                     <div className="text-lg font-semibold text-red-700">
-                      {fmtN(selectedNutrition.sodium, " mg")}
+                      {fmtN(selectedNutrition.sugar)}
                     </div>
-                    <div className="text-xs text-red-600">Sodium</div>
+                    <div className="text-xs text-red-600">Sugar</div>
                   </div>
                 </div>
               </CardContent>

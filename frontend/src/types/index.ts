@@ -36,7 +36,7 @@ export interface NutritionData {
     carbs: number;
     fat: number;
     fiber: number;
-    sodium: number;
+    sugar: number;
   }
   
   // ─── One uploaded image reference ────────────────────────────────────────────

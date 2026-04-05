@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { getPresignedUrl, uploadToS3, analyzeFood } from "../services/api";
+import { getPresignedUrl, uploadToS3, analyzeFood, generateWeeklySummary } from "../services/api";
 
 type Analysis = any;
 
@@ -165,6 +165,9 @@ export default function useImageAnalysis(onScanComplete?: () => void) {
 
       setAnalysis(analysisData);
       setStatus("success");
+
+      // Generate weekly summary in background
+      generateWeeklySummary(token).catch(() => {});
 
       if (onScanComplete) setTimeout(() => onScanComplete(), 5000);
     } catch (err: any) {

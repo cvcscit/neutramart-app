@@ -164,9 +164,9 @@ export default function NutritionAnalysis({
                           </div>
                           <div className="text-center">
                             <div className="text-lg font-semibold text-red-700">
-                              {fmtN(analysis.totalNutrition.sodium, " mg")}
+                              {fmtN(analysis.totalNutrition.sugar)}
                             </div>
-                            <div className="text-xs text-red-600">Sodium</div>
+                            <div className="text-xs text-red-600">Sugar</div>
                           </div>
                         </div>
                       </CardContent>

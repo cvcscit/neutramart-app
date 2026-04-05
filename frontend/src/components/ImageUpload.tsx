@@ -55,7 +55,7 @@ function flatResponseToAnalysis(
   const sugar    = parseNum(r.sugar);
   const weight   = String(r.weight ?? "1 serving");
 
-  const totalNutrition: TotalNutrition = { calories, protein, carbs, fat, fiber, sodium: 0 };
+  const totalNutrition: TotalNutrition = { calories, protein, carbs, fat, fiber, sugar };
 
   const dish = {
     name:        (r.description as string) ?? "Meal",
@@ -158,9 +158,9 @@ function sumTotalNutrition(analyses: SingleAnalysis[]): TotalNutrition | undefin
       carbs:    acc.carbs    + a.totalNutrition!.carbs,
       fat:      acc.fat      + a.totalNutrition!.fat,
       fiber:    acc.fiber    + a.totalNutrition!.fiber,
-      sodium:   acc.sodium   + a.totalNutrition!.sodium,
+      sugar:    acc.sugar    + a.totalNutrition!.sugar,
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sodium: 0 },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 },
   );
 }
 
