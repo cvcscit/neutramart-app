@@ -1,5 +1,14 @@
 import { API_URL } from "../config/api";
 
+/* ---------- Helpers ---------- */
+
+async function jsonOrText(res: Response): Promise<any> {
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json")) return res.json();
+  const text = await res.text();
+  try { return JSON.parse(text); } catch { return { detail: text || res.statusText }; }
+}
+
 /* ---------- Types ---------- */
 
 type PresignRequest = {
@@ -43,7 +52,7 @@ export async function getPresignedUrl(
   });
 
   if (!res.ok) {
-    const err = await res.json();
+    const err = await jsonOrText(res);
     throw new Error(err.detail || "Failed to get upload URL");
   }
 
@@ -97,7 +106,7 @@ export async function analyzeFood(
   });
 
   if (!res.ok) {
-    const err = await res.json();
+    const err = await jsonOrText(res);
     throw new Error(err.detail || "Food analysis failed");
   }
 
@@ -118,7 +127,7 @@ export async function sendChatMessage(
   });
 
   if (!res.ok) {
-    const err = await res.json();
+    const err = await jsonOrText(res);
     throw new Error(err.detail || "Chat failed");
   }
 
@@ -133,7 +142,7 @@ export async function getWeeklySummary(token: string): Promise<any> {
   });
 
   if (!res.ok) {
-    const err = await res.json();
+    const err = await jsonOrText(res);
     throw new Error(err.detail || "Failed to fetch weekly summary");
   }
 
