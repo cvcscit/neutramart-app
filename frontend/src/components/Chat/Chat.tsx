@@ -90,7 +90,7 @@ export default function Chat() {
       <div className="chat-header">
         <h3 className="chat-title">NutraSmart AI</h3>
         <button className="chat-close" onClick={() => setOpen(false)}>
-          x
+          ✕
         </button>
       </div>
 
