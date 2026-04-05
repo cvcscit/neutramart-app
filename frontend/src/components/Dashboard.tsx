@@ -77,6 +77,7 @@ import {
 } from "@/components/ui/collapsible";
 import ReactMarkdown from "react-markdown";
 import { getWeeklySummary } from "../services/api";
+import { API_URL } from "../config/api";
 import {
   format,
   subDays,
@@ -270,7 +271,7 @@ export default function ProfilePage() {
         timezone: userTimezone,
       });
 
-      const response = await fetch(`/api/nutrition/summary?${params}`, {
+      const response = await fetch(`${API_URL}/nutrition/summary?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
@@ -296,7 +297,7 @@ export default function ProfilePage() {
         limit: "100", // Increased limit to show more meals
       });
 
-      const response = await fetch(`/api/meals?${params}`, {
+      const response = await fetch(`${API_URL}/meals?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.ok) {
