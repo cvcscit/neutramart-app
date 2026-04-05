@@ -113,7 +113,7 @@ export default function Navbar() {
                     onClick={() => setMobileMenuOpen(false)}
                     className="text-base font-medium text-gray-700 hover:text-green-700 transition-colors py-2"
                   >
-                    Profile
+                    Upload
                   </Link>
                   <Link
                     to="/feedback"
