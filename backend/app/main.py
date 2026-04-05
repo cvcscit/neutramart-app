@@ -2,8 +2,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
-from app.config import ALLOWED_ORIGINS
+from app.config import ALLOWED_ORIGINS, CF_ORIGIN_SECRET
 from app.limiter import limiter
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.routes.upload import router as upload_router
 from app.routes.analyze import router as analyze_router
 from app.routes.chat import router as chat_router
@@ -12,6 +13,20 @@ from app.routes.meals import router as meals_router
 
 app = FastAPI()
 app.state.limiter = limiter
+
+
+class OriginVerifyMiddleware(BaseHTTPMiddleware):
+    """Block direct ALB access — only allow requests through CloudFront."""
+    async def dispatch(self, request: Request, call_next):
+        # Skip check if no secret configured (local dev) or for health checks
+        if not CF_ORIGIN_SECRET or request.url.path == "/health":
+            return await call_next(request)
+        if request.headers.get("X-Origin-Verify") != CF_ORIGIN_SECRET:
+            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+        return await call_next(request)
+
+
+app.add_middleware(OriginVerifyMiddleware)
 
 
 @app.exception_handler(RateLimitExceeded)

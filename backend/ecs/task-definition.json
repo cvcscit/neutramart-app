@@ -26,6 +26,10 @@
         {
           "name": "GOOGLE_CLIENT_ID",
           "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/google-client-id"
+        },
+        {
+          "name": "CF_ORIGIN_SECRET",
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/cf-origin-secret"
         }
       ],
       "healthCheck": {

@@ -31,3 +31,5 @@ MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 
 BEDROCK_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
 BEDROCK_REGION = "ap-south-1"
+
+CF_ORIGIN_SECRET = os.environ.get("CF_ORIGIN_SECRET", "")
