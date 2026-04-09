@@ -86,44 +86,6 @@ export default function NutritionAnalysis({
                     </p>
                   )}
 
-                  {/* Dishes */}
-                  {dishesWithNutrition.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold">Dishes Identified</p>
-                      {dishesWithNutrition.map((dish, di) => (
-                        <div
-                          key={di}
-                          className="p-3 rounded-lg bg-muted/40 border"
-                        >
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-sm capitalize truncate flex-1">
-                              {dish.name}
-                            </p>
-                            <Badge variant="outline" className="text-xs shrink-0">
-                              {dish.servingSize}
-                            </Badge>
-                          </div>
-                          {dish.nutrition && (
-                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-                              <span className="text-xs text-green-700 font-medium">
-                                {Math.round(dish.nutrition.nf_calories)} cal
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                P: {fmtN(dish.nutrition.nf_protein)}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                C: {fmtN(dish.nutrition.nf_total_carbohydrate)}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                F: {fmtN(dish.nutrition.nf_total_fat)}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Total nutrition */}
                   {analysis.totalNutrition && (
                     <Card className="bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
@@ -209,6 +171,78 @@ export default function NutritionAnalysis({
                     </Card>
                   )}
 
+                  {/* Dishes */}
+                  {dishesWithNutrition.length > 0 && (
+                    <div className="space-y-3">
+                      <p className="text-sm font-semibold">Dishes in This Image</p>
+                      {dishesWithNutrition.map((dish, di) => (
+                        <Card key={di} className="border">
+                          <CardContent className="pt-4 pb-3">
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="font-semibold text-base capitalize">
+                                {dish.name}
+                              </p>
+                              <Badge variant="outline" className="text-xs shrink-0">
+                                {dish.servingSize}
+                              </Badge>
+                            </div>
+                            {dish.nutrition && (
+                              <>
+                                <div className="grid grid-cols-4 gap-3 mb-2">
+                                  <div className="text-center">
+                                    <div className="text-lg font-bold text-green-700">
+                                      {Math.round(dish.nutrition.nf_calories)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">Calories</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-lg font-semibold text-blue-700">
+                                      {fmtN(dish.nutrition.nf_protein)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">Protein</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-lg font-semibold text-orange-700">
+                                      {fmtN(dish.nutrition.nf_total_carbohydrate)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">Carbs</div>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className="text-lg font-semibold text-yellow-700">
+                                      {fmtN(dish.nutrition.nf_total_fat)}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">Fat</div>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Serving: {dish.nutrition.serving_weight_grams}g
+                                </p>
+                              </>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Ingredients / Objects Identified */}
+                  {analysis.objects && analysis.objects.length > 0 && (
+                    <Card className="border-blue-200 bg-blue-50">
+                      <CardContent className="py-3">
+                        <p className="text-sm font-semibold text-blue-800 mb-2">
+                          Ingredients Identified
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {analysis.objects.map((obj, oi) => (
+                            <Badge key={oi} variant="secondary" className="text-xs">
+                              {obj}
+                            </Badge>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* Allergens */}
                   {analysis.allergens && analysis.allergens.length > 0 && (
                     <Card className="border-red-200 bg-red-50">
@@ -247,6 +281,39 @@ export default function NutritionAnalysis({
                         <p className="text-sm leading-relaxed text-green-900">
                           {analysis.recommendation}
                         </p>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Activity Suggestions */}
+                  {analysis.totalNutrition && analysis.totalNutrition.calories > 0 && (
+                    <Card className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50">
+                      <CardContent className="pt-4">
+                        <p className="text-sm font-semibold text-amber-800 mb-1">
+                          Activity Suggestions to Burn Total Calories
+                        </p>
+                        <p className="text-xs text-amber-600 mb-3">
+                          Approximate time needed to burn {Math.round(analysis.totalNutrition.calories)} calories
+                        </p>
+                        <div className="grid grid-cols-4 gap-3">
+                          {[
+                            { label: "Running", calsPerMin: 10, icon: "🏃" },
+                            { label: "Cycling", calsPerMin: 8, icon: "🚴" },
+                            { label: "Walking", calsPerMin: 6, icon: "🚶" },
+                            { label: "Swimming", calsPerMin: 11, icon: "🏊" },
+                          ].map((activity) => {
+                            const mins = Math.round(analysis.totalNutrition!.calories / activity.calsPerMin);
+                            return (
+                              <div key={activity.label} className="text-center">
+                                <div className="text-2xl mb-1">{activity.icon}</div>
+                                <div className="text-lg font-bold text-amber-800">
+                                  {mins} min
+                                </div>
+                                <div className="text-xs text-amber-600">{activity.label}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </CardContent>
                     </Card>
                   )}

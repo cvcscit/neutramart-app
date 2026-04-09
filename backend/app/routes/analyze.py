@@ -46,13 +46,27 @@ PROMPT = (
     "return ONLY a JSON object with these exact keys, no other text:\n"
     "{\n"
     '  "description": "Brief description of the food item(s) visible",\n'
-    '  "weight": "Estimated weight/portion size (e.g. 250g)",\n'
-    '  "calories": "Estimated calories (e.g. 350 kcal)",\n'
-    '  "protein": "Estimated protein (e.g. 25g)",\n'
-    '  "carbs": "Estimated carbohydrates (e.g. 40g)",\n'
-    '  "fat": "Estimated fat (e.g. 15g)",\n'
-    '  "fiber": "Estimated fiber (e.g. 5g)",\n'
-    '  "sugar": "Estimated sugar (e.g. 10g)",\n'
+    '  "weight": "Estimated total weight/portion size (e.g. 250g)",\n'
+    '  "calories": "Estimated total calories (e.g. 350 kcal)",\n'
+    '  "protein": "Estimated total protein (e.g. 25g)",\n'
+    '  "carbs": "Estimated total carbohydrates (e.g. 40g)",\n'
+    '  "fat": "Estimated total fat (e.g. 15g)",\n'
+    '  "fiber": "Estimated total fiber (e.g. 5g)",\n'
+    '  "sugar": "Estimated total sugar (e.g. 10g)",\n'
+    '  "dishes": [\n'
+    '    {\n'
+    '      "name": "Dish name (e.g. Masala Chai)",\n'
+    '      "servingSize": "Serving description (e.g. 1 cup)",\n'
+    '      "servingWeightGrams": 250,\n'
+    '      "calories": 98,\n'
+    '      "protein": 3,\n'
+    '      "carbs": 12,\n'
+    '      "fat": 4,\n'
+    '      "fiber": 0,\n'
+    '      "sugar": 8\n'
+    '    }\n'
+    '  ],\n'
+    '  "objects": ["List of all ingredients and objects visible in the image, e.g. black tea, milk, cardamom, cinnamon, porcelain cup, spoon"],\n'
     '  "micronutrients": {\n'
     '    "vitamin_a": "Estimated Vitamin A (e.g. 120 mcg)",\n'
     '    "vitamin_c": "Estimated Vitamin C (e.g. 15 mg)",\n'
@@ -68,6 +82,8 @@ PROMPT = (
     '  "summary": "One-sentence nutritional summary",\n'
     '  "recommendation": "Brief dietary recommendation"\n'
     "}\n"
+    "IMPORTANT: Identify EACH separate dish/food item in the image and list them individually in the dishes array "
+    "with per-dish nutrition. The top-level calories/protein/carbs/fat/fiber/sugar should be the TOTAL across all dishes.\n"
     "If the image does not contain food, set description to 'No food detected' "
     "and set all nutritional values to 'N/A'."
 )

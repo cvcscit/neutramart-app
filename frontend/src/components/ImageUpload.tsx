@@ -57,23 +57,47 @@ function flatResponseToAnalysis(
 
   const totalNutrition: TotalNutrition = { calories, protein, carbs, fat, fiber, sugar };
 
-  const dish = {
-    name:        (r.description as string) ?? "Meal",
-    servingSize: weight,
-    nutrition: {
-      food_name:             (r.description as string) ?? "Meal",
-      serving_qty:           1,
-      serving_unit:          "serving",
-      serving_weight_grams:  parseNum(weight),
-      nf_calories:           calories,
-      nf_total_fat:          fat,
-      nf_total_carbohydrate: carbs,
-      nf_dietary_fiber:      fiber,
-      nf_sugars:             sugar,
-      nf_protein:            protein,
-      nf_sodium:             0,
-    },
-  };
+  // Build dishes from Bedrock response or fall back to single dish
+  let dishes: SingleAnalysis["dishes"];
+  const rawDishes = r.dishes as Array<Record<string, unknown>> | undefined;
+
+  if (Array.isArray(rawDishes) && rawDishes.length > 0) {
+    dishes = rawDishes.map((d) => ({
+      name:        String(d.name ?? "Unknown"),
+      servingSize: String(d.servingSize ?? "1 serving"),
+      nutrition: {
+        food_name:             String(d.name ?? "Unknown"),
+        serving_qty:           1,
+        serving_unit:          "serving",
+        serving_weight_grams:  parseNum(d.servingWeightGrams),
+        nf_calories:           parseNum(d.calories),
+        nf_total_fat:          parseNum(d.fat),
+        nf_total_carbohydrate: parseNum(d.carbs),
+        nf_dietary_fiber:      parseNum(d.fiber),
+        nf_sugars:             parseNum(d.sugar),
+        nf_protein:            parseNum(d.protein),
+        nf_sodium:             0,
+      },
+    }));
+  } else {
+    dishes = [{
+      name:        (r.description as string) ?? "Meal",
+      servingSize: weight,
+      nutrition: {
+        food_name:             (r.description as string) ?? "Meal",
+        serving_qty:           1,
+        serving_unit:          "serving",
+        serving_weight_grams:  parseNum(weight),
+        nf_calories:           calories,
+        nf_total_fat:          fat,
+        nf_total_carbohydrate: carbs,
+        nf_dietary_fiber:      fiber,
+        nf_sugars:             sugar,
+        nf_protein:            protein,
+        nf_sodium:             0,
+      },
+    }];
+  }
 
   return {
     imageKey:        `img-${index}`,
@@ -83,7 +107,7 @@ function flatResponseToAnalysis(
     confidence:      (r.confidence      as number)   ?? 0.9,
     allergens:       (r.allergens       as string[]) ?? [],
     objects:         (r.objects         as string[]) ?? [],
-    dishes:          [dish],
+    dishes,
     totalNutrition,
     micronutrients:  (r.micronutrients  as Record<string, string>) ?? undefined,
     recommendation:  (r.recommendation  as string)   ?? undefined,
@@ -125,8 +149,8 @@ function buildAnalyses(
     })) as SingleAnalysis[];
   }
 
-  // 3. Flat structured object with dishes/totalNutrition already present
-  if (r.dishes !== undefined || r.totalNutrition !== undefined) {
+  // 3. Structured object with totalNutrition already present (from saved meals)
+  if (r.totalNutrition !== undefined) {
     return previews.map((preview, i) => ({
       imageKey:       `img-${i}`,
       imageUrl:       preview,
