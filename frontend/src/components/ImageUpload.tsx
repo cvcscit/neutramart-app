@@ -85,6 +85,7 @@ function flatResponseToAnalysis(
     objects:         (r.objects         as string[]) ?? [],
     dishes:          [dish],
     totalNutrition,
+    micronutrients:  (r.micronutrients  as Record<string, string>) ?? undefined,
     recommendation:  (r.recommendation  as string)   ?? undefined,
   };
 }
@@ -136,6 +137,7 @@ function buildAnalyses(
       objects:        (r.objects     as string[])             ?? [],
       dishes:         (r.dishes          as SingleAnalysis["dishes"]) ?? [],
       totalNutrition: (r.totalNutrition  as TotalNutrition | undefined),
+      micronutrients: (r.micronutrients as Record<string, string> | undefined),
       recommendation: (r.recommendation as string | undefined),
     }));
   }

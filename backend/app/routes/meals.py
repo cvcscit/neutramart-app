@@ -151,6 +151,10 @@ def _scan_to_meal(scan: dict) -> dict:
             "fiber": _parse_num(scan.get("fiber")),
             "sugar": _parse_num(scan.get("sugar")),
         },
+        "micronutrients": {
+            k: _parse_num(v)
+            for k, v in (scan.get("micronutrients") or {}).items()
+        },
         "dishes": [],
     }
 
@@ -292,6 +296,8 @@ def get_nutrition_summary(
     meals = _load_all_meals(uid)
 
     # Group meals by period bucket
+    MICRO_KEYS = ("vitamin_a", "vitamin_c", "vitamin_d", "vitamin_b12", "iron", "calcium", "potassium", "sodium", "zinc", "magnesium")
+
     buckets: dict[str, dict] = defaultdict(lambda: {
         "total_calories": 0.0,
         "total_protein": 0.0,
@@ -300,6 +306,7 @@ def get_nutrition_summary(
         "total_fiber": 0.0,
         "total_sugar": 0.0,
         "meal_count": 0,
+        **{f"total_{mk}": 0.0 for mk in MICRO_KEYS},
     })
 
     for meal in meals:
@@ -333,6 +340,11 @@ def get_nutrition_summary(
         b["total_fiber"]    += tn.get("fiber", 0)
         b["total_sugar"]    += tn.get("sugar", 0)
         b["meal_count"]     += 1
+
+        # Aggregate micronutrients
+        micro = meal.get("micronutrients") or {}
+        for mk in MICRO_KEYS:
+            b[f"total_{mk}"] += micro.get(mk, 0)
 
     period_key_map = {
         "daily":   "date",

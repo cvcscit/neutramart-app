@@ -62,6 +62,7 @@ export interface NutritionData {
     objects?: string[];
     dishes?: Dish[];
     totalNutrition?: TotalNutrition;
+    micronutrients?: Record<string, string>;
     recommendation?: string;
   }
 

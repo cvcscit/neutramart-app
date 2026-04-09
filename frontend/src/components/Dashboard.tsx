@@ -662,6 +662,46 @@ export default function ProfilePage() {
         </Card>
       </div>
 
+      {/* Micronutrient Summary */}
+      {stats.daysLogged > 0 && (
+        <Card className="mb-8 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-purple-800">
+              Micronutrient Totals ({period === "daily" ? "Daily Avg" : "Period Total"})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              {[
+                { key: "total_vitamin_a", label: "Vit A", unit: "mcg", color: "text-orange-700" },
+                { key: "total_vitamin_c", label: "Vit C", unit: "mg", color: "text-yellow-700" },
+                { key: "total_vitamin_d", label: "Vit D", unit: "mcg", color: "text-amber-700" },
+                { key: "total_vitamin_b12", label: "Vit B12", unit: "mcg", color: "text-pink-700" },
+                { key: "total_iron", label: "Iron", unit: "mg", color: "text-red-700" },
+                { key: "total_calcium", label: "Calcium", unit: "mg", color: "text-blue-700" },
+                { key: "total_potassium", label: "Potassium", unit: "mg", color: "text-green-700" },
+                { key: "total_sodium", label: "Sodium", unit: "mg", color: "text-slate-700" },
+                { key: "total_zinc", label: "Zinc", unit: "mg", color: "text-teal-700" },
+                { key: "total_magnesium", label: "Magnesium", unit: "mg", color: "text-indigo-700" },
+              ].map((item) => {
+                const total = summaryData.reduce((sum, d: any) => sum + (d[item.key] || 0), 0);
+                const avg = stats.daysLogged > 0 ? Math.round(total / stats.daysLogged) : 0;
+                const display = period === "daily" ? avg : Math.round(total);
+                if (display === 0) return null;
+                return (
+                  <div key={item.key} className="text-center">
+                    <div className={`text-lg font-semibold ${item.color}`}>
+                      {display} {item.unit}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{item.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* 7-Day Eating Summary */}
       {(weeklyReport || weeklyLoading) && (
         <Card className="mb-8">

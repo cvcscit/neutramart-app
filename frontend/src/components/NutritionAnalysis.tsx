@@ -173,6 +173,42 @@ export default function NutritionAnalysis({
                     </Card>
                   )}
 
+                  {/* Micronutrients */}
+                  {analysis.micronutrients && (
+                    <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
+                      <CardContent className="pt-4">
+                        <p className="text-sm font-semibold text-purple-800 mb-3">
+                          Micronutrients
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                          {[
+                            { key: "vitamin_a", label: "Vit A", color: "text-orange-700" },
+                            { key: "vitamin_c", label: "Vit C", color: "text-yellow-700" },
+                            { key: "vitamin_d", label: "Vit D", color: "text-amber-700" },
+                            { key: "vitamin_b12", label: "Vit B12", color: "text-pink-700" },
+                            { key: "iron", label: "Iron", color: "text-red-700" },
+                            { key: "calcium", label: "Calcium", color: "text-blue-700" },
+                            { key: "potassium", label: "Potassium", color: "text-green-700" },
+                            { key: "sodium", label: "Sodium", color: "text-slate-700" },
+                            { key: "zinc", label: "Zinc", color: "text-teal-700" },
+                            { key: "magnesium", label: "Magnesium", color: "text-indigo-700" },
+                          ].map((item) => {
+                            const val = analysis.micronutrients?.[item.key];
+                            if (!val || val === "N/A") return null;
+                            return (
+                              <div key={item.key} className="text-center">
+                                <div className={`text-sm font-semibold ${item.color}`}>
+                                  {val}
+                                </div>
+                                <div className="text-xs text-muted-foreground">{item.label}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
                   {/* Allergens */}
                   {analysis.allergens && analysis.allergens.length > 0 && (
                     <Card className="border-red-200 bg-red-50">

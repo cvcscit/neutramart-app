@@ -53,6 +53,18 @@ PROMPT = (
     '  "fat": "Estimated fat (e.g. 15g)",\n'
     '  "fiber": "Estimated fiber (e.g. 5g)",\n'
     '  "sugar": "Estimated sugar (e.g. 10g)",\n'
+    '  "micronutrients": {\n'
+    '    "vitamin_a": "Estimated Vitamin A (e.g. 120 mcg)",\n'
+    '    "vitamin_c": "Estimated Vitamin C (e.g. 15 mg)",\n'
+    '    "vitamin_d": "Estimated Vitamin D (e.g. 2 mcg)",\n'
+    '    "vitamin_b12": "Estimated Vitamin B12 (e.g. 0.5 mcg)",\n'
+    '    "iron": "Estimated Iron (e.g. 3 mg)",\n'
+    '    "calcium": "Estimated Calcium (e.g. 80 mg)",\n'
+    '    "potassium": "Estimated Potassium (e.g. 200 mg)",\n'
+    '    "sodium": "Estimated Sodium (e.g. 400 mg)",\n'
+    '    "zinc": "Estimated Zinc (e.g. 2 mg)",\n'
+    '    "magnesium": "Estimated Magnesium (e.g. 30 mg)"\n'
+    '  },\n'
     '  "summary": "One-sentence nutritional summary",\n'
     '  "recommendation": "Brief dietary recommendation"\n'
     "}\n"
@@ -156,6 +168,13 @@ def analyze_food(request: Request, body: AnalyzeRequest, _user=Depends(get_curre
         if k not in analysis:
             analysis[k] = "N/A"
 
+    # Ensure micronutrients exist
+    if "micronutrients" not in analysis or not isinstance(analysis["micronutrients"], dict):
+        analysis["micronutrients"] = {}
+    for mk in ("vitamin_a", "vitamin_c", "vitamin_d", "vitamin_b12", "iron", "calcium", "potassium", "sodium", "zinc", "magnesium"):
+        if mk not in analysis["micronutrients"]:
+            analysis["micronutrients"][mk] = "N/A"
+
     # 6. Save scan result to S3 and trigger weekly summary in background
     user_email = _user["email"]
     user_id = user_email.replace("@", "_at_").replace(".", "_")
@@ -256,6 +275,8 @@ def _generate_weekly_summary(user_id: str):
     health_section = _get_health_profile(user_id)
     records_text = ""
     for scan in sorted(scans, key=lambda x: x.get("timestamp", "")):
+        micro = scan.get("micronutrients") or {}
+        micro_text = ", ".join(f"{k}: {v}" for k, v in micro.items() if v and v != "N/A")
         records_text += (
             f"- Date: {scan.get('timestamp', 'unknown')}\n"
             f"  Food: {scan.get('description', 'N/A')}\n"
@@ -264,7 +285,8 @@ def _generate_weekly_summary(user_id: str):
             f"Carbs: {scan.get('carbs', 'N/A')}, "
             f"Fat: {scan.get('fat', 'N/A')}, "
             f"Fiber: {scan.get('fiber', 'N/A')}, "
-            f"Sugar: {scan.get('sugar', 'N/A')}\n\n"
+            f"Sugar: {scan.get('sugar', 'N/A')}\n"
+            f"  Micronutrients: {micro_text or 'N/A'}\n\n"
         )
 
     full_prompt = WEEKLY_SUMMARY_PROMPT.format(health_profile_section=health_section) + records_text
