@@ -12,11 +12,15 @@ import "./index.css";
 
 const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+if (!clientId) {
+  console.error("Missing VITE_GOOGLE_CLIENT_ID. Add it to frontend/.env");
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
       <ScrollToTop />
-      <GoogleOAuthProvider clientId={clientId}>
+      <GoogleOAuthProvider clientId={clientId || ""}>
         <AuthProvider>
           <ReactLenis root>
             <Navbar />
