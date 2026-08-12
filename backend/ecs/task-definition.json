@@ -20,6 +20,7 @@
       "environment": [
         { "name": "AWS_REGION", "value": "<AWS_REGION>" },
         { "name": "S3_BUCKET_NAME", "value": "sci-neutrasmart-project" },
+        { "name": "AGENTCORE_REGION", "value": "us-east-1" },
         { "name": "ALLOWED_ORIGINS", "value": "https://nutrasmart.in,http://localhost:5173,http://localhost:5174" }
       ],
       "secrets": [
@@ -30,6 +31,10 @@
         {
           "name": "CF_ORIGIN_SECRET",
           "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/cf-origin-secret"
+        },
+        {
+          "name": "AGENT_RUNTIME_ARN",
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-runtime-arn"
         }
       ],
       "healthCheck": {

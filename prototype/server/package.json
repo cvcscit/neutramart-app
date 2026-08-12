@@ -1,0 +1,14 @@
+{
+  "name": "nutrasmart-chat-prototype-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mock Node/Express backend for the NutraSmart chat-first UI prototype",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}

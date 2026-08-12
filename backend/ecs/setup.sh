@@ -250,7 +250,8 @@ cat > /tmp/task-policy.json << POLICY
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
-        "s3:PutObject"
+        "s3:PutObject",
+        "s3:DeleteObject"
       ],
       "Resource": "arn:aws:s3:::sci-neutrasmart-project/*"
     },
@@ -263,7 +264,15 @@ cat > /tmp/task-policy.json << POLICY
       "Resource": "arn:aws:s3:::sci-neutrasmart-project"
     },
     {
-      "Sid": "BedrockInvoke",
+      "Sid": "AgentCoreInvoke",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock-agentcore:InvokeAgentRuntime"
+      ],
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:209479309679:runtime/*"
+    },
+    {
+      "Sid": "BedrockInvokeLegacy",
       "Effect": "Allow",
       "Action": [
         "bedrock:InvokeModel"

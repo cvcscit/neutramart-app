@@ -8,16 +8,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-import boto3
-
 from app.auth import get_current_user
-from app.config import AWS_REGION, S3_BUCKET_NAME
+from app.regions import get_data_context
 from app.limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-s3 = boto3.client("s3", region_name=AWS_REGION)
 
 
 # ─── Pydantic models (mirrors the frontend payload) ───────────────────────────
@@ -76,6 +72,7 @@ def save_meal(
     request: Request,
     body: SaveMealRequest,
     _user=Depends(get_current_user),
+    ctx: dict = Depends(get_data_context),
 ):
     """
     Save a meal (with its selected dishes) to S3.
@@ -105,8 +102,8 @@ def save_meal(
     }
 
     try:
-        s3.put_object(
-            Bucket=S3_BUCKET_NAME,
+        ctx["s3"].put_object(
+            Bucket=ctx["bucket"],
             Key=meal_key,
             Body=json.dumps(meal_record),
             ContentType="application/json",
@@ -159,11 +156,11 @@ def _scan_to_meal(scan: dict) -> dict:
     }
 
 
-def _load_s3_jsons(uid: str, folder: str) -> list[dict]:
-    """Fetch all JSON files from users/{uid}/{folder}/ in S3."""
+def _load_s3_jsons(uid: str, folder: str, s3, bucket: str) -> list[dict]:
+    """Fetch all JSON files from users/{uid}/{folder}/ in the regional bucket."""
     prefix = f"users/{uid}/{folder}/"
     try:
-        response = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
     except Exception as e:
         logger.error(f"Failed to list {folder} for {uid}: {e}")
         return []
@@ -174,17 +171,17 @@ def _load_s3_jsons(uid: str, folder: str) -> list[dict]:
     items = []
     for obj in response["Contents"]:
         try:
-            data = s3.get_object(Bucket=S3_BUCKET_NAME, Key=obj["Key"])
+            data = s3.get_object(Bucket=bucket, Key=obj["Key"])
             items.append(json.loads(data["Body"].read()))
         except Exception as e:
             logger.warning(f"Skipping unreadable {obj['Key']}: {e}")
     return items
 
 
-def _load_all_meals(uid: str) -> list[dict]:
+def _load_all_meals(uid: str, s3, bucket: str) -> list[dict]:
     """Fetch meals AND scans for this user, returning unified meal-like dicts."""
-    meals = _load_s3_jsons(uid, "meals")
-    scans = _load_s3_jsons(uid, "scans")
+    meals = _load_s3_jsons(uid, "meals", s3, bucket)
+    scans = _load_s3_jsons(uid, "scans", s3, bucket)
     # Convert scans to meal format
     for scan in scans:
         meals.append(_scan_to_meal(scan))
@@ -231,13 +228,14 @@ def get_meals(
     endDate: Optional[str] = Query(None),
     limit: int = Query(100),
     _user=Depends(get_current_user),
+    ctx: dict = Depends(get_data_context),
 ):
     """
     Return saved meals for the current user, newest first.
     Optionally filter by startDate / endDate (YYYY-MM-DD).
     """
     uid = _user_id(_user["email"])
-    meals = _load_all_meals(uid)
+    meals = _load_all_meals(uid, ctx["s3"], ctx["bucket"])
 
     # Parse date filters
     start = date.fromisoformat(startDate) if startDate else None
@@ -278,6 +276,7 @@ def get_nutrition_summary(
     limit: int = Query(365),
     timezone: str = Query("UTC"),
     _user=Depends(get_current_user),
+    ctx: dict = Depends(get_data_context),
 ):
     """
     Aggregate nutrition totals by period for the current user.
@@ -293,7 +292,7 @@ def get_nutrition_summary(
     start = date.fromisoformat(startDate) if startDate else None
     end = date.fromisoformat(endDate) if endDate else None
 
-    meals = _load_all_meals(uid)
+    meals = _load_all_meals(uid, ctx["s3"], ctx["bucket"])
 
     # Group meals by period bucket
     MICRO_KEYS = ("vitamin_a", "vitamin_c", "vitamin_d", "vitamin_b12", "iron", "calcium", "potassium", "sodium", "zinc", "magnesium")
@@ -371,6 +370,7 @@ def delete_meal(
     request: Request,
     meal_id: str,
     _user=Depends(get_current_user),
+    ctx: dict = Depends(get_data_context),
 ):
     """
     Delete a specific meal by its meal_id.
@@ -380,12 +380,12 @@ def delete_meal(
     meal_key = f"users/{uid}/meals/{meal_id}.json"
 
     try:
-        s3.head_object(Bucket=S3_BUCKET_NAME, Key=meal_key)
+        ctx["s3"].head_object(Bucket=ctx["bucket"], Key=meal_key)
     except Exception:
         raise HTTPException(status_code=404, detail="Meal not found.")
 
     try:
-        s3.delete_object(Bucket=S3_BUCKET_NAME, Key=meal_key)
+        ctx["s3"].delete_object(Bucket=ctx["bucket"], Key=meal_key)
     except Exception as e:
         logger.error(f"Failed to delete meal {meal_key}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete meal.")

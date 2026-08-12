@@ -2,20 +2,13 @@ import uuid
 import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-import boto3
 
 from app.auth import get_current_user
-from app.config import (
-    AWS_REGION,
-    S3_BUCKET_NAME,
-    ALLOWED_CONTENT_TYPES,
-    PRESIGN_EXPIRY_SECONDS,
-)
+from app.config import ALLOWED_CONTENT_TYPES, PRESIGN_EXPIRY_SECONDS
+from app.regions import get_data_context
 from app.limiter import limiter
 
 router = APIRouter()
-
-s3 = boto3.client("s3", region_name=AWS_REGION)
 
 
 class PresignRequest(BaseModel):
@@ -26,7 +19,12 @@ class PresignRequest(BaseModel):
 
 @router.post("/upload/presign")
 @limiter.limit("20/minute")
-def create_presigned_url(request: Request, body: PresignRequest, _user=Depends(get_current_user)):
+def create_presigned_url(
+    request: Request,
+    body: PresignRequest,
+    _user=Depends(get_current_user),
+    ctx: dict = Depends(get_data_context),
+):
     if body.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="File type not allowed")
 
@@ -36,10 +34,12 @@ def create_presigned_url(request: Request, body: PresignRequest, _user=Depends(g
 
     key = f"{body.email}/{uuid.uuid4().hex}{ext}"
 
-    url = s3.generate_presigned_url(
+    # Presign against the user's REGIONAL bucket so the browser uploads the image
+    # directly into the correct region (bytes never transit the edge).
+    url = ctx["s3"].generate_presigned_url(
         "put_object",
         Params={
-            "Bucket": S3_BUCKET_NAME,
+            "Bucket": ctx["bucket"],
             "Key": key,
             "ContentType": body.content_type,
         },
