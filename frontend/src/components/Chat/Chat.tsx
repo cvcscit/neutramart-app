@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
-import { sendChatMessage } from "../../services/api";
+import {
+  sendChatMessage,
+  getPresignedUrl,
+  uploadToS3,
+  analyzeFood,
+} from "../../services/api";
 import "./Chat.css";
 
 type Message = {
@@ -8,8 +13,28 @@ type Message = {
   content: string;
 };
 
+function summarizeAnalysis(analysis: any): string {
+  let payload = analysis;
+
+  if (Array.isArray(payload)) payload = payload[0];
+  if (payload?.analyses && Array.isArray(payload.analyses)) payload = payload.analyses[0];
+  if (payload?.results && Array.isArray(payload.results)) payload = payload.results[0];
+
+  const item = payload ?? {};
+  const description = item.description || item.name || "this meal";
+  const total = item.totalNutrition ?? item.nutrition ?? {};
+  const calories = total.calories ?? item.calories ?? item.nf_calories;
+  const protein = total.protein ?? item.protein;
+  const carbs = total.carbs ?? item.carbs;
+  const fat = total.fat ?? item.fat;
+  const allergens = Array.isArray(item.allergens) ? item.allergens.slice(0, 3).join(", ") : "none noted";
+  const objects = Array.isArray(item.objects) ? item.objects.slice(0, 4).join(", ") : "no major objects";
+
+  return `I analyzed ${description}. ${calories ? `Estimated ${calories} kcal` : ""}${protein ? `, ${protein}g protein` : ""}${carbs ? `, ${carbs}g carbs` : ""}${fat ? `, ${fat}g fat` : ""}. Allergens: ${allergens}. Foods identified: ${objects}.`;
+}
+
 export default function Chat() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -20,6 +45,7 @@ export default function Chat() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -57,6 +83,55 @@ export default function Chat() {
       ]);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length || !token || !user) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const selected = files.filter((file) => file.type.startsWith("image/"));
+    if (!selected.length) {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    const imageLabel = selected.length === 1 ? selected[0].name : `${selected.length} images`;
+    setMessages((prev) => [...prev, { role: "user", content: `Uploaded ${imageLabel}` }]);
+    setLoading(true);
+
+    try {
+      const uploaded = await Promise.all(
+        selected.map(async (file) => {
+          const { url, key } = await getPresignedUrl(token, {
+            filename: file.name,
+            contentType: file.type,
+            email: user.email,
+          });
+
+          await uploadToS3(url, file, () => undefined);
+          return { key, contentType: file.type };
+        })
+      );
+
+      const analysis = await analyzeFood(token, uploaded);
+      const summary = summarizeAnalysis(analysis);
+
+      setMessages((prev) => [...prev, { role: "assistant", content: summary }]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "I couldn't analyze that image yet. Please try a clear food photo again.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -111,6 +186,22 @@ export default function Chat() {
       </div>
 
       <form className="chat-input-bar" onSubmit={handleSend}>
+        <button
+          type="button"
+          className="chat-upload"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={loading}
+        >
+          Image
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          onChange={handleImageUpload}
+        />
         <input
           className="chat-input"
           type="text"

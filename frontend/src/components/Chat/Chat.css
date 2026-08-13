@@ -152,10 +152,33 @@
 
 .chat-input-bar {
   display: flex;
+  align-items: center;
   padding: 14px;
   gap: 10px;
   border-top: 1px solid var(--border);
   background: #ffffff;
+}
+
+.chat-upload {
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chat-upload:hover:not(:disabled) {
+  background: #eefcf4;
+  border-color: #16a34a;
+}
+
+.chat-upload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .chat-input {
