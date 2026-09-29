@@ -1,0 +1,9 @@
+# Local development on an NVIDIA GPU (CUDA 12.8 builds); never used in the agent image.
+# Run with FOOD_CLASSIFIER_DEVICE=cuda.
+--extra-index-url https://download.pytorch.org/whl/cu128
+-r requirements-base.txt
+
+# Same versions as requirements.txt, CUDA variant.
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+pytest==9.1.1
