@@ -34,15 +34,22 @@ class FakeS3:
 
 
 class FakeBedrock:
-    """Records converse() calls and replies with a fixed analysis JSON."""
+    """Records converse() calls and replies with analysis JSON.
 
-    def __init__(self, reply: dict | str | None = None):
+    ``reply`` is one reply for every call, or a list of replies used in call order (the
+    last one repeats once the list runs out).
+    """
+
+    def __init__(self, reply: dict | str | list | None = None):
         self.calls: list[dict] = []
-        self.reply = reply if reply is not None else {"description": "Stub meal", "calories": "300 kcal"}
+        if reply is None:
+            reply = {"description": "Stub meal", "calories": "300 kcal", "confidence": 0.9}
+        self.replies = reply if isinstance(reply, list) else [reply]
 
     def converse(self, **kwargs):
         self.calls.append(kwargs)
-        text = self.reply if isinstance(self.reply, str) else json.dumps(self.reply)
+        reply = self.replies[min(len(self.calls), len(self.replies)) - 1]
+        text = reply if isinstance(reply, str) else json.dumps(reply)
         return {"output": {"message": {"content": [{"text": text}]}}, "stopReason": "end_turn"}
 
     @property

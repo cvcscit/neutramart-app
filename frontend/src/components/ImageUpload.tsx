@@ -54,6 +54,7 @@ function flatResponseToAnalysis(
   const fiber    = parseNum(r.fiber);
   const sugar    = parseNum(r.sugar);
   const weight   = String(r.weight ?? "1 serving");
+  const recognition = r.recognition as { source?: "llm" | "classifier"; fallback_used?: boolean } | undefined;
 
   const totalNutrition: TotalNutrition = { calories, protein, carbs, fat, fiber, sugar };
 
@@ -105,6 +106,8 @@ function flatResponseToAnalysis(
     imageName:       file?.name ?? `Image ${index + 1}`,
     description:     (r.description     as string)   ?? "",
     confidence:      (r.confidence      as number)   ?? 0.9,
+    recognitionSource: recognition?.source,
+    fallbackUsed:      recognition?.fallback_used,
     allergens:       (r.allergens       as string[]) ?? [],
     objects:         (r.objects         as string[]) ?? [],
     dishes,

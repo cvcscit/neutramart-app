@@ -1,7 +1,7 @@
 """Centralized, env-driven settings for the NutraSmart agent.
 
-Every tunable (model IDs, regions, bucket, image limits, classifier config, network
-timeouts) lives here. ``load_settings()`` reads the process environment once; callers
+Every tunable (model IDs, regions, bucket, image limits, classifier config, recognition
+order and confidence thresholds, network timeouts) lives here. ``load_settings()`` reads the process environment once; callers
 receive an immutable ``AgentSettings`` and never read ``os.environ`` themselves.
 """
 
@@ -9,10 +9,18 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from enum import Enum
 from typing import Mapping
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 CLASSIFIER_DEVICES = ("cpu", "cuda")  # AgentCore has no GPU; "cuda" is for local runs only
+
+
+class RecognitionOrder(str, Enum):
+    """Which recognizer runs first; the other is the fallback when the first is not good enough."""
+
+    CLASSIFIER_FIRST = "classifier_first"
+    LLM_FIRST = "llm_first"
 
 
 @dataclass(frozen=True)
@@ -50,6 +58,8 @@ class AgentSettings:
     s3_read_timeout_s: float
     max_retries: int
 
+    recognition_order: RecognitionOrder
+    llm_confidence_threshold: float
     classifier: ClassifierSettings
 
 
@@ -69,10 +79,24 @@ def _get_float(env: Mapping[str, str], name: str, default: float) -> float:
     return float(env.get(name, default))
 
 
+def _get_unit_float(env: Mapping[str, str], name: str, default: float) -> float:
+    value = _get_float(env, name, default)
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{name} must be within [0, 1], got {value}")
+    return value
+
+
+def _get_recognition_order(env: Mapping[str, str]) -> RecognitionOrder:
+    raw = env.get("FOOD_RECOGNITION_ORDER", RecognitionOrder.CLASSIFIER_FIRST.value).strip().lower()
+    try:
+        return RecognitionOrder(raw)
+    except ValueError:
+        allowed = [order.value for order in RecognitionOrder]
+        raise ValueError(f"FOOD_RECOGNITION_ORDER must be one of {allowed}, got {raw!r}") from None
+
+
 def _load_classifier_settings(env: Mapping[str, str]) -> ClassifierSettings:
-    threshold = _get_float(env, "FOOD_CLASSIFIER_THRESHOLD", 0.60)
-    if not 0.0 <= threshold <= 1.0:
-        raise ValueError(f"FOOD_CLASSIFIER_THRESHOLD must be within [0, 1], got {threshold}")
+    threshold = _get_unit_float(env, "FOOD_CLASSIFIER_THRESHOLD", 0.60)
     device = env.get("FOOD_CLASSIFIER_DEVICE", "cpu").strip().lower()
     if device not in CLASSIFIER_DEVICES:
         raise ValueError(f"FOOD_CLASSIFIER_DEVICE must be one of {CLASSIFIER_DEVICES}, got {device!r}")
@@ -113,5 +137,7 @@ def load_settings(env: Mapping[str, str] | None = None) -> AgentSettings:
         s3_connect_timeout_s=_get_float(env, "S3_CONNECT_TIMEOUT_S", 5.0),
         s3_read_timeout_s=_get_float(env, "S3_READ_TIMEOUT_S", 60.0),
         max_retries=_get_int(env, "AWS_MAX_RETRIES", 3),
+        recognition_order=_get_recognition_order(env),
+        llm_confidence_threshold=_get_unit_float(env, "LLM_CONFIDENCE_THRESHOLD", 0.60),
         classifier=_load_classifier_settings(env),
     )

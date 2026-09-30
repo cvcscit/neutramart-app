@@ -57,6 +57,10 @@ export interface NutritionData {
   
     description: string;
     confidence?: number;
+    /** Which recognizer identified the food: "llm" (vision LLM) or "classifier" (food model) */
+    recognitionSource?: "llm" | "classifier";
+    /** True when the first recognizer fell short and the fallback's answer was used */
+    fallbackUsed?: boolean;
     allergens?: string[];
     /** Ingredient / food-object tags */
     objects?: string[];

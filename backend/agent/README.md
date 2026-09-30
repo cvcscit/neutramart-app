@@ -22,16 +22,38 @@ Bedrock in us-east-1.
 
 ## Food recognition (`analyze`)
 
+Two recognizers, and `FOOD_RECOGNITION_ORDER` picks which runs first; the other is the fallback.
+
+- **Classifier**: classify each image; score = lowest top-1 confidence across images; good enough when
+  ≥ `FOOD_CLASSIFIER_THRESHOLD`. The dish names then go to a text-only LLM call for nutrition.
+- **Vision LLM**: images go to the LLM, which self-reports `confidence` (0–1); good enough when
+  ≥ `LLM_CONFIDENCE_THRESHOLD`. No JSON, "No food detected" or a missing confidence scores 0.
+
 ```
-S3 images ─► local classifier (each image) ─► every top-1 ≥ threshold? ─yes─► text-only LLM: nutrition for the named dishes
-                 │ disabled / load or inference error    │ no
-                 └───────────────────────────────────────┴───────────► vision LLM on the images (original behavior)
+classifier_first (default):
+S3 images ─► classifier ─► good enough? ─yes─► text-only LLM (nutrition for the named dishes)
+                 │ no                                  ▲
+                 ▼                                     │ classifier scored higher
+             vision LLM ─► good enough? ─no──► compare scores (tie → classifier)
+                               │ yes / LLM scored higher ─► vision result
+
+llm_first:
+S3 images ─► vision LLM ─► good enough? ─yes─► vision result (classifier never runs)
+                 │ no
+                 ▼
+             classifier ─► good enough, or scored higher than the LLM? ─yes─► text-only LLM
+                               │ no (tie → LLM) ─► vision result
 ```
+
+With the classifier disabled, or if it fails to load or classify, the vision LLM result is used
+in either order.
 
 - Code: `analysis.py` (routing), `recognition/` (classifier protocol, EfficientNetV2-S backend,
   S3 model cache, backend registry), `prompts.py`, `settings.py`, `services.py`.
-- Every result carries `recognition: {source: "classifier"|"llm", threshold, predictions}`, which is
-  saved with the scan so fallback rate and classifier accuracy can be audited.
+- Every result carries a top-level `confidence` (the winning recognizer's score) and
+  `recognition: {source: "classifier"|"llm", order, threshold, llm_threshold, llm_confidence,
+  fallback_used, predictions}`, which is saved with the scan so fallback rate and accuracy can be
+  audited. `fallback_used` is true when the first recognizer fell short and the fallback's answer won.
 - The model loads lazily on the first `analyze` request per container (chat/summary never load
   torch). If it cannot be loaded, the error is logged and the agent uses the vision LLM only.
 
@@ -57,6 +79,8 @@ The runtime role needs `s3:GetObject` on the model object.
 | `ANALYZE_MAX_TOKENS` / `SUMMARY_MAX_TOKENS` | `4096` / `2048` |
 | `BEDROCK_CONNECT_TIMEOUT_S` / `BEDROCK_READ_TIMEOUT_S` | `10` / `120` |
 | `S3_CONNECT_TIMEOUT_S` / `S3_READ_TIMEOUT_S` / `AWS_MAX_RETRIES` | `5` / `60` / `3` |
+| `FOOD_RECOGNITION_ORDER` | `classifier_first` (or `llm_first`) |
+| `LLM_CONFIDENCE_THRESHOLD` | `0.60` |
 | `FOOD_CLASSIFIER_ENABLED` | `false` |
 | `FOOD_CLASSIFIER_BACKEND` | `efficientnet_v2_s` |
 | `FOOD_CLASSIFIER_MODEL_URI` | — (required when enabled; `s3://…` or a local path) |

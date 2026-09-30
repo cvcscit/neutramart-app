@@ -53,7 +53,9 @@ ANALYZE_PROMPT = (
     + "IMPORTANT: Identify EACH separate dish/food item in the image and list them individually in the dishes array "
     "with per-dish nutrition. The top-level calories/protein/carbs/fat/fiber/sugar should be the TOTAL across all dishes.\n"
     "If the image does not contain food, set description to 'No food detected' "
-    "and set all nutritional values to 'N/A'."
+    "and set all nutritional values to 'N/A'.\n"
+    'Also include a top-level "confidence" key: a number from 0 to 1 for how sure you are '
+    "that you identified the food correctly (0 if no food is detected)."
 )
 
 

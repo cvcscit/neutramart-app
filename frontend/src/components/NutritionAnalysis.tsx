@@ -10,10 +10,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, ChevronUp, Lightbulb, ShieldAlert, Utensils } from "lucide-react";
 
-import type { NutritionAnalysisProps } from "@/types";
+import type { NutritionAnalysisProps, SingleAnalysis } from "@/types";
 
 function fmtN(value: number, unit = "g"): string {
   return `${Math.round(value * 10) / 10}${unit}`;
+}
+
+function recognitionLabel(source: SingleAnalysis["recognitionSource"]): string {
+  if (source === "classifier") return "Method: Food model";
+  if (source === "llm") return "Method: AI vision";
+  return "Method: unknown";
 }
 
 export default function NutritionAnalysis({
@@ -58,6 +64,10 @@ export default function NutritionAnalysis({
                           {Math.round(analysis.confidence * 100)}% confidence
                         </Badge>
                       )}
+                      <Badge variant="outline" className="text-xs font-normal">
+                        {recognitionLabel(analysis.recognitionSource)}
+                        {analysis.fallbackUsed && " · fallback"}
+                      </Badge>
                     </CardTitle>
                     {isOpen ? (
                       <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -81,7 +91,7 @@ export default function NutritionAnalysis({
 
                   {/* Description */}
                   {analysis.description && (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-base font-medium text-foreground">
                       {analysis.description}
                     </p>
                   )}
