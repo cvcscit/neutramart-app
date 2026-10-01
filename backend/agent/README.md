@@ -31,14 +31,14 @@ ID token and derives it. Never pass a client-supplied user id.
 
 ## Deploy
 
-Prereqs: Node 20+, Docker, AWS creds for account 209479309679. CLI is npm `@aws/agentcore`.
+Prereqs: Node 20+, Docker, AWS creds for account 792207721590. CLI is npm `@aws/agentcore`.
 
 ```bash
 npm install -g @aws/agentcore aws-cdk
 cd backend/agent
 
 # One-time CDK bootstrap for us-east-1 (if not already done)
-cdk bootstrap aws://209479309679/us-east-1
+cdk bootstrap aws://792207721590/us-east-1
 
 # Scaffold config around this code (Container build, HTTP, Bedrock, no memory)
 agentcore create --name NutrasmartAgent --framework Strands \

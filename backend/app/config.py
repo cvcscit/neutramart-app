@@ -26,8 +26,16 @@ ALLOWED_CONTENT_TYPES = {
     "image/webp",
 }
 
+# Face-scan video uploads (separate allowlist so image endpoints can't be fed video).
+ALLOWED_VIDEO_CONTENT_TYPES = {
+    "video/mp4",
+    "video/quicktime",  # .mov
+    "video/webm",  # browser MediaRecorder default
+}
+
 PRESIGN_EXPIRY_SECONDS = 300
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
+MAX_VIDEO_SIZE_BYTES = 400 * 1024 * 1024  # 400MB, matches BP_measurement/app/server.py
 
 # Bedrock is now called from the AgentCore runtime, not the edge. These remain only
 # as a fallback for local/legacy direct-call paths and can be removed once the agent

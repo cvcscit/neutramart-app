@@ -269,7 +269,7 @@ cat > /tmp/task-policy.json << POLICY
       "Action": [
         "bedrock-agentcore:InvokeAgentRuntime"
       ],
-      "Resource": "arn:aws:bedrock-agentcore:us-east-1:209479309679:runtime/*"
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:${AWS_ACCOUNT_ID}:runtime/*"
     },
     {
       "Sid": "BedrockInvokeLegacy",
@@ -347,7 +347,11 @@ echo "==> [11/12] Registering Task Definition..."
 TASK_DEF=$(cat task-definition.json | \
     sed "s|<ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" | \
     sed "s|<AWS_REGION>|${AWS_REGION}|g" | \
-    sed "s|<ALB_DNS>|${ALB_DNS}|g")
+    sed "s|<ALB_DNS>|${ALB_DNS}|g" | \
+    sed "s|<BUCKET_US>|${BUCKET_US:-sci-neutrasmart-project-us}|g" | \
+    sed "s|<BUCKET_IN>|${BUCKET_IN:-sci-neutrasmart-project}|g" | \
+    sed "s|<BUCKET_CA>|${BUCKET_CA:-sci-neutrasmart-project-ca}|g" | \
+    sed "s|<BUCKET_EU>|${BUCKET_EU:-sci-neutrasmart-project-eu}|g")
 
 echo "$TASK_DEF" | aws ecs register-task-definition \
     --cli-input-json file:///dev/stdin \

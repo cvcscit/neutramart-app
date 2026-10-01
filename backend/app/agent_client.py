@@ -42,11 +42,17 @@ def _session_id(user_id: str) -> str:
     return f"nutrasmart-{hashlib.sha256(user_id.encode()).hexdigest()}"
 
 
-def invoke_agent(payload: dict, agent_arn: str | None = None, region: str | None = None) -> dict:
+def invoke_agent(payload: dict, agent_arn: str | None = None, region: str | None = None,
+                  session_id: str | None = None) -> dict:
     """Invoke the regional AgentCore runtime and return the parsed JSON response.
 
     ``agent_arn`` selects the regional runtime; if omitted it resolves from ``region``
     (or DEFAULT_DATA_REGION). Raises AgentError on failure or an ``error`` payload.
+
+    ``session_id`` overrides the default stable per-user session. Pass a fresh random
+    id (e.g. uuid4) for actions that don't need conversational/session continuity
+    (like face_scan) -- this guarantees a new container picks up the latest deployed
+    code instead of potentially reusing a stale warm instance pinned to an old image.
     """
     if agent_arn is None:
         region = region or DEFAULT_DATA_REGION
@@ -59,7 +65,7 @@ def invoke_agent(payload: dict, agent_arn: str | None = None, region: str | None
     try:
         response = client.invoke_agent_runtime(
             agentRuntimeArn=agent_arn,
-            runtimeSessionId=_session_id(user_id),
+            runtimeSessionId=session_id or _session_id(user_id),
             payload=json.dumps(payload).encode("utf-8"),
             qualifier="DEFAULT",
         )

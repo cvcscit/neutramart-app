@@ -10,6 +10,7 @@ from app.routes.analyze import router as analyze_router
 from app.routes.chat import router as chat_router
 from app.routes.testimonials import router as testimonials_router
 from app.routes.meals import router as meals_router
+from app.routes.facescan import router as facescan_router
 
 app = FastAPI()
 app.state.limiter = limiter
@@ -55,3 +56,4 @@ app.include_router(analyze_router, prefix="/api")
 app.include_router(chat_router, prefix="/api")
 app.include_router(testimonials_router, prefix="/api")
 app.include_router(meals_router, prefix="/api")
+app.include_router(facescan_router, prefix="/api")

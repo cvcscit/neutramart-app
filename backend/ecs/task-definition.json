@@ -19,8 +19,13 @@
       ],
       "environment": [
         { "name": "AWS_REGION", "value": "<AWS_REGION>" },
-        { "name": "S3_BUCKET_NAME", "value": "sci-neutrasmart-project" },
+        { "name": "S3_BUCKET_NAME", "value": "<BUCKET_IN>" },
         { "name": "AGENTCORE_REGION", "value": "us-east-1" },
+        { "name": "DEFAULT_DATA_REGION", "value": "us-east-1" },
+        { "name": "BUCKET_US", "value": "<BUCKET_US>" },
+        { "name": "BUCKET_IN", "value": "<BUCKET_IN>" },
+        { "name": "BUCKET_CA", "value": "<BUCKET_CA>" },
+        { "name": "BUCKET_EU", "value": "<BUCKET_EU>" },
         { "name": "ALLOWED_ORIGINS", "value": "https://nutrasmart.in,http://localhost:5173,http://localhost:5174" }
       ],
       "secrets": [
@@ -35,6 +40,22 @@
         {
           "name": "AGENT_RUNTIME_ARN",
           "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-runtime-arn"
+        },
+        {
+          "name": "AGENT_ARN_US",
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-us"
+        },
+        {
+          "name": "AGENT_ARN_IN",
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-in"
+        },
+        {
+          "name": "AGENT_ARN_CA",
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-ca"
+        },
+        {
+          "name": "AGENT_ARN_EU",
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-eu"
         }
       ],
       "healthCheck": {

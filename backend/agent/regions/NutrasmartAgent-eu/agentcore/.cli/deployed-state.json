@@ -1,0 +1,17 @@
+{
+  "targets": {
+    "default": {
+      "resources": {
+        "runtimes": {
+          "NutrasmartAgent": {
+            "runtimeId": "NutrasmartAgent_NutrasmartAgent-f13SbOHIWD",
+            "runtimeArn": "arn:aws:bedrock-agentcore:eu-west-1:792207721590:runtime/NutrasmartAgent_NutrasmartAgent-f13SbOHIWD",
+            "roleArn": "arn:aws:iam::792207721590:role/AgentCore-NutrasmartAgent-ApplicationAgentNutrasmar-1EmqC9zGJUPJ"
+          }
+        },
+        "stackName": "AgentCore-NutrasmartAgent-default",
+        "deployHash": "80e11286f2b675b7"
+      }
+    }
+  }
+}

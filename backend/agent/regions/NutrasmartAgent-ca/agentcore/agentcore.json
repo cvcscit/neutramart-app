@@ -1,0 +1,59 @@
+{
+  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
+  "name": "NutrasmartAgent",
+  "version": 1,
+  "managedBy": "CDK",
+  "tags": {
+    "agentcore:created-by": "agentcore-cli",
+    "agentcore:project-name": "NutrasmartAgent"
+  },
+  "runtimes": [
+    {
+      "name": "NutrasmartAgent",
+      "build": "Container",
+      "entrypoint": "app/nutrasmart_agent/main.py",
+      "codeLocation": "app/NutrasmartAgent/",
+      "runtimeVersion": "PYTHON_3_14",
+      "networkMode": "PUBLIC",
+      "protocol": "HTTP",
+      "additionalPolicies": [
+        "policies/s3-bedrock-policy.json"
+      ],
+      "envVars": [
+        {
+          "name": "AWS_REGION",
+          "value": "ca-central-1"
+        },
+        {
+          "name": "BEDROCK_REGION",
+          "value": "ca-central-1"
+        },
+        {
+          "name": "BEDROCK_MODEL_ID",
+          "value": "ca.amazon.nova-lite-v1:0"
+        },
+        {
+          "name": "S3_BUCKET_NAME",
+          "value": "w360-nutrasmart-ca"
+        },
+        {
+          "name": "S3_REGION",
+          "value": "ca-central-1"
+        }
+      ]
+    }
+  ],
+  "memories": [],
+  "knowledgeBases": [],
+  "credentials": [],
+  "evaluators": [],
+  "onlineEvalConfigs": [],
+  "agentCoreGateways": [],
+  "policyEngines": [],
+  "configBundles": [],
+  "abTests": [],
+  "harnesses": [],
+  "datasets": [],
+  "capacityProviders": [],
+  "payments": []
+}

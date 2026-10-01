@@ -16,7 +16,8 @@ if [ ! -f resources.env ]; then
 fi
 source resources.env
 
-PROFILE="neutramart"
+# Override with: AWS_PROFILE=<your-profile> ./deploy.sh
+PROFILE="${AWS_PROFILE:-nutrasmart}"
 export AWS_PROFILE="$PROFILE"
 
 ECR_REPO="${PROJECT}-backend"

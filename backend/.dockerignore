@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .git
 .gitignore
+agent/
+ecs/
+node_modules/
+.venv/

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.auth import get_current_user
-from app.config import ALLOWED_CONTENT_TYPES, PRESIGN_EXPIRY_SECONDS
+from app.config import ALLOWED_CONTENT_TYPES, ALLOWED_VIDEO_CONTENT_TYPES, PRESIGN_EXPIRY_SECONDS
 from app.regions import get_data_context
 from app.limiter import limiter
 
@@ -25,11 +25,13 @@ def create_presigned_url(
     _user=Depends(get_current_user),
     ctx: dict = Depends(get_data_context),
 ):
-    if body.content_type not in ALLOWED_CONTENT_TYPES:
+    is_video = body.content_type in ALLOWED_VIDEO_CONTENT_TYPES
+    if body.content_type not in ALLOWED_CONTENT_TYPES and not is_video:
         raise HTTPException(status_code=400, detail="File type not allowed")
 
     ext = os.path.splitext(body.filename)[1].lower()
-    if ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp"}:
+    allowed_ext = {".mp4", ".mov", ".webm"} if is_video else {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    if ext not in allowed_ext:
         raise HTTPException(status_code=400, detail="Invalid file extension")
 
     key = f"{body.email}/{uuid.uuid4().hex}{ext}"
