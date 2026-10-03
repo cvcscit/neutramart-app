@@ -14,10 +14,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # falls back to building from source here it will likely fail or balloon build time.
 # Verify with: docker buildx build --platform linux/arm64 . (see documents/DEPLOYMENT.md)
 
-COPY requirements.txt .
+COPY requirements.txt requirements-base.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ ./app/
+
+# Food-classifier weights are not baked in: they are downloaded from
+# FOOD_CLASSIFIER_MODEL_URI (S3) on the first analyze request and cached here.
+ENV FOOD_CLASSIFIER_CACHE_DIR=/tmp/food_models
 
 # AgentCore Runtime invokes the HTTP server on port 8080 (POST /invocations, GET /ping).
 EXPOSE 8080

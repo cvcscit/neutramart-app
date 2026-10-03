@@ -53,6 +53,11 @@ BEDROCK_REGION = "ap-south-1"
 AGENT_RUNTIME_ARN = os.environ.get("AGENT_RUNTIME_ARN", "")
 AGENTCORE_REGION = os.environ.get("AGENTCORE_REGION", "us-east-1")
 
+# Local development: when set (e.g. http://localhost:8080), every agent call goes to the
+# locally running agent's /invocations endpoint instead of the deployed AgentCore runtime.
+AGENT_LOCAL_URL = os.environ.get("AGENT_LOCAL_URL", "").rstrip("/")
+AGENT_LOCAL_TIMEOUT_S = float(os.environ.get("AGENT_LOCAL_TIMEOUT_S", "180"))
+
 # ─── Data residency (per-geography storage + processing) ─────────────────────────────
 # A user's location (from the CloudFront-Viewer-Country header) is mapped to a data
 # region; ALL of that user's data is stored in the region's bucket and processed by the

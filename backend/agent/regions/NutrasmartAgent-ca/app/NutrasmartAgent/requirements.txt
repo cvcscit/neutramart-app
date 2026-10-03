@@ -1,16 +1,8 @@
-bedrock-agentcore>=0.1.0
-strands-agents>=0.1.0
-boto3>=1.40.0
-Pillow>=10.0.0
+# Production (AgentCore, Graviton/arm64, no GPU). Since torch 2.11 the default PyPI
+# aarch64 wheel is CUDA-enabled and far too large for the image, so pin the CPU builds.
+--extra-index-url https://download.pytorch.org/whl/cpu
+-r requirements-base.txt
 
-# Face-scan (heart-rate only) dependencies -- see app/dsv/, vendored from the
-# biomarker-processing BP_measurement repo. mediapipe's linux_aarch64 wheel
-# availability must be verified against this image's exact Python version
-# before relying on this in production (see Dockerfile comment).
-numpy==2.0.2
-scipy==1.13.1
-pandas==2.3.3
-scikit-learn==1.6.1
-joblib==1.5.3
-opencv-python-headless
-mediapipe==0.10.14
+# Pinned to the versions the food classifier checkpoint was trained with.
+torch==2.11.0+cpu
+torchvision==0.26.0+cpu

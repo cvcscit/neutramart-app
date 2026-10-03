@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend API (FastAPI :8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}/backend",
+      "envFile": "${workspaceFolder}/backend/.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Agent (AgentCore :8080)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "app.nutrasmart_agent.main",
+      "cwd": "${workspaceFolder}/backend/agent",
+      "envFile": "${workspaceFolder}/backend/agent/.env",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Agent tests (pytest)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["-x", "-vv"],
+      "cwd": "${workspaceFolder}/backend/agent",
+      "console": "integratedTerminal"
+    }
+  ]
+}

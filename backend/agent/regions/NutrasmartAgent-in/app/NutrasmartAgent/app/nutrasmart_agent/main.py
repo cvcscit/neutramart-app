@@ -15,18 +15,21 @@ Data model (S3 bucket ``sci-neutrasmart-project`` in ap-south-1):
     users/{user_id}/scans/{ts}.json      food-analysis records (the knowledge base)
     users/{user_id}/weekly_summary.txt   generated eating summary
     users/{user_id}/health_profile.json  optional health profile
+
+``analyze`` is implemented by the self-contained ``food_scan/`` package (local EfficientNet
+classifier + vision-LLM fallback) -- owned by a different workstream, kept in its own
+subpackage with its own settings/AWS clients so it can keep evolving independently of
+chat/summary/face_scan below. See food_scan/__init__.py.
 """
 
-import io
 import json
 import logging
 import os
-import re
 import tempfile
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 
 import boto3
-from PIL import Image
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent, tool
@@ -35,6 +38,10 @@ from strands.models import BedrockModel
 from app.dsv.extract import extract_video
 from app.dsv.heart_rate import measure_hr, HRGate
 from app.dsv.features import compute_features
+
+from .food_scan.analysis import ImageRef, analyze_food_images
+from .food_scan.services import AgentServices, build_services
+from .food_scan.settings import load_settings as load_food_scan_settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nutrasmart_agent")
@@ -121,64 +128,6 @@ def _predict_bundle(bundle, feats):
     X = pd.DataFrame([{c: feats.get(c, float("nan")) for c in bundle["features"]}])
     return {t: round(float(m.predict(X)[0]), 1) for t, m in bundle["models"].items()}
 
-# Image limits (moved here from the FastAPI edge)
-MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB raw
-BEDROCK_MAX_IMAGE_BYTES = 3_932_160  # 3.75 MB Bedrock Converse inline limit
-MAX_IMAGES_PER_REQUEST = 5
-
-MICRONUTRIENT_KEYS = (
-    "vitamin_a", "vitamin_c", "vitamin_d", "vitamin_b12", "iron",
-    "calcium", "potassium", "sodium", "zinc", "magnesium",
-)
-
-# ─── Prompts (ported verbatim from analyze.py / chat.py) ─────────────────────────────
-ANALYZE_PROMPT = (
-    "You are a nutrition analysis assistant. Analyze the food in the provided image(s) and "
-    "return ONLY a JSON object with these exact keys, no other text:\n"
-    "{\n"
-    '  "description": "Brief description of the food item(s) visible",\n'
-    '  "weight": "Estimated total weight/portion size (e.g. 250g)",\n'
-    '  "calories": "Estimated total calories (e.g. 350 kcal)",\n'
-    '  "protein": "Estimated total protein (e.g. 25g)",\n'
-    '  "carbs": "Estimated total carbohydrates (e.g. 40g)",\n'
-    '  "fat": "Estimated total fat (e.g. 15g)",\n'
-    '  "fiber": "Estimated total fiber (e.g. 5g)",\n'
-    '  "sugar": "Estimated total sugar (e.g. 10g)",\n'
-    '  "dishes": [\n'
-    '    {\n'
-    '      "name": "Dish name (e.g. Masala Chai)",\n'
-    '      "servingSize": "Serving description (e.g. 1 cup)",\n'
-    '      "servingWeightGrams": 250,\n'
-    '      "calories": 98,\n'
-    '      "protein": 3,\n'
-    '      "carbs": 12,\n'
-    '      "fat": 4,\n'
-    '      "fiber": 0,\n'
-    '      "sugar": 8\n'
-    '    }\n'
-    '  ],\n'
-    '  "objects": ["List of all ingredients and objects visible in the image, e.g. black tea, milk, cardamom, cinnamon, porcelain cup, spoon"],\n'
-    '  "micronutrients": {\n'
-    '    "vitamin_a": "Estimated Vitamin A (e.g. 120 mcg)",\n'
-    '    "vitamin_c": "Estimated Vitamin C (e.g. 15 mg)",\n'
-    '    "vitamin_d": "Estimated Vitamin D (e.g. 2 mcg)",\n'
-    '    "vitamin_b12": "Estimated Vitamin B12 (e.g. 0.5 mcg)",\n'
-    '    "iron": "Estimated Iron (e.g. 3 mg)",\n'
-    '    "calcium": "Estimated Calcium (e.g. 80 mg)",\n'
-    '    "potassium": "Estimated Potassium (e.g. 200 mg)",\n'
-    '    "sodium": "Estimated Sodium (e.g. 400 mg)",\n'
-    '    "zinc": "Estimated Zinc (e.g. 2 mg)",\n'
-    '    "magnesium": "Estimated Magnesium (e.g. 30 mg)"\n'
-    '  },\n'
-    '  "summary": "One-sentence nutritional summary",\n'
-    '  "recommendation": "Brief dietary recommendation"\n'
-    "}\n"
-    "IMPORTANT: Identify EACH separate dish/food item in the image and list them individually in the dishes array "
-    "with per-dish nutrition. The top-level calories/protein/carbs/fat/fiber/sugar should be the TOTAL across all dishes.\n"
-    "If the image does not contain food, set description to 'No food detected' "
-    "and set all nutritional values to 'N/A'."
-)
-
 WEEKLY_SUMMARY_PROMPT = (
     "You are a nutrition and dietary advisor. Below are the food analysis records "
     "from the last 2 months for a user. Each record includes the food description, "
@@ -230,42 +179,6 @@ CHAT_SYSTEM_PROMPT = (
     "- Do not provide medical diagnoses. Suggest consulting a doctor before "
     "starting any new supplement or for health concerns.\n\n"
 )
-
-
-# ─── Helpers ─────────────────────────────────────────────────────────────────────────
-def _extract_json(text: str) -> dict:
-    """Robustly pull a JSON object out of a model response.
-
-    Handles clean JSON, ```json fenced blocks, and JSON wrapped in prose
-    (some models, e.g. Nova, add commentary around the object).
-    """
-    text = (text or "").strip()
-    # 1) code-fenced block
-    m = re.search(r"```(?:json)?\s*([\s\S]*?)```", text)
-    if m:
-        text = m.group(1).strip()
-    # 2) straight parse
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        pass
-    # 3) first '{' … last '}'
-    start, end = text.find("{"), text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            pass
-    raise ValueError("Failed to parse nutrition analysis from model response")
-
-
-def _normalize_image(raw_bytes: bytes) -> bytes:
-    """Open with Pillow and re-encode as JPEG (fixes HEIC / format mismatches / corruption)."""
-    img = Image.open(io.BytesIO(raw_bytes))
-    img = img.convert("RGB")
-    out = io.BytesIO()
-    img.save(out, format="JPEG", quality=85)
-    return out.getvalue()
 
 
 # ─── Tools ───────────────────────────────────────────────────────────────────────────
@@ -360,62 +273,15 @@ def _save_scan(user_id: str, analysis: dict, image_keys: list) -> None:
     )
 
 
-def _analyze_food_images(images: list) -> dict:
-    """Fetch images from S3, normalize, run the vision model, return the analysis JSON.
-
-    ``images`` is a list of {"key", "content_type"} dicts.
-    """
-    if not images:
-        raise ValueError("At least one image is required.")
-    if len(images) > MAX_IMAGES_PER_REQUEST:
-        raise ValueError(f"Maximum {MAX_IMAGES_PER_REQUEST} images per request.")
-
-    image_content_blocks = []
-    for item in images:
-        key = item["key"]
-        head = s3.head_object(Bucket=S3_BUCKET_NAME, Key=key)
-        if head["ContentLength"] > MAX_IMAGE_SIZE_BYTES:
-            raise ValueError(f"Image {key} is too large (max 10MB)")
-        raw_bytes = s3.get_object(Bucket=S3_BUCKET_NAME, Key=key)["Body"].read()
-        jpeg_bytes = _normalize_image(raw_bytes)
-        if len(jpeg_bytes) > BEDROCK_MAX_IMAGE_BYTES:
-            raise ValueError("An image is too large for analysis after processing (max 3.75 MB).")
-        image_content_blocks.append(
-            {"image": {"format": "jpeg", "source": {"bytes": jpeg_bytes}}}
-        )
-
-    content = image_content_blocks + [{"text": ANALYZE_PROMPT}]
-    resp = bedrock.converse(
-        modelId=BEDROCK_MODEL_ID,
-        messages=[{"role": "user", "content": content}],
-        inferenceConfig={"maxTokens": 4096},
-    )
-    text = resp["output"]["message"]["content"][0]["text"]
-    try:
-        analysis = _extract_json(text)
-    except ValueError:
-        # Model replied in prose with no JSON (blurry/ambiguous/non-food image, or a
-        # refusal). Degrade gracefully to a valid 200 result instead of a 502 so the
-        # UI shows a friendly "couldn't read this photo" card.
-        logger.warning("No JSON from model (stopReason=%s); returning graceful result. head=%r",
-                       resp.get("stopReason"), (text or "")[:160])
-        analysis = {
-            "description": "No food detected",
-            "recommendation": "I couldn't read this photo clearly — try a well-lit shot with the food filling the frame.",
-        }
-
-    # Backfill expected keys (mirrors the previous FastAPI behavior)
-    for k in ("description", "weight", "calories", "protein", "carbs", "fat",
-              "fiber", "sugar", "summary", "recommendation"):
-        analysis.setdefault(k, "N/A")
-    if not isinstance(analysis.get("micronutrients"), dict):
-        analysis["micronutrients"] = {}
-    for mk in MICRONUTRIENT_KEYS:
-        analysis["micronutrients"].setdefault(mk, "N/A")
-    return analysis
-
-
 # ─── Action handlers ─────────────────────────────────────────────────────────────────
+@lru_cache(maxsize=1)
+def _food_scan_services() -> AgentServices:
+    """Build food_scan's own settings, AWS clients and lazy classifier, once per
+    container. Fully independent of this module's s3/bedrock clients above."""
+    return build_services(load_food_scan_settings())
+
+
+
 def _model() -> BedrockModel:
     return BedrockModel(model_id=BEDROCK_MODEL_ID, region_name=BEDROCK_REGION)
 
@@ -464,9 +330,18 @@ def _handle_summary(payload: dict) -> dict:
 def _handle_analyze(payload: dict) -> dict:
     user_id = payload["user_id"]
     images = payload.get("images") or []
-    analysis = _analyze_food_images(images)
+    refs = [ImageRef(key=img["key"], content_type=img.get("content_type", "")) for img in images]
+
+    services = _food_scan_services()
+    analysis = analyze_food_images(
+        refs,
+        s3=services.s3,
+        bedrock=services.bedrock,
+        classifier=services.classifier.get(),
+        settings=services.settings,
+    )
     try:
-        _save_scan(user_id, analysis, [img["key"] for img in images])
+        _save_scan(user_id, analysis, [ref.key for ref in refs])
     except Exception as e:  # don't fail the request if the scan save fails
         logger.warning("Scan save failed for %s: %s", user_id, e)
     return analysis
