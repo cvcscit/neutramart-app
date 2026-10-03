@@ -53,8 +53,20 @@ function VitalsCard({ data }) {
   );
 }
 
+// Must stay unique across reloads: messages are restored from sessionStorage, so a counter
+// that restarts at 0 would hand out keys that collide with restored ones.
 let idc = 0;
-const uid = () => `m${++idc}`;
+const uid = () => `m${Date.now().toString(36)}-${(++idc).toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+
+class MessageBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { failed: false }; }
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err) { console.error("[nutrasmart] message render failed:", err); }
+  render() {
+    if (this.state.failed) return <div className="bubble assistant">⚠️ Couldn't display this result.</div>;
+    return this.props.children;
+  }
+}
 const mdBold = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 
 const _show = (v) => v !== undefined && v !== null && v !== "" && v !== "N/A";
@@ -243,7 +255,8 @@ export default function App() {
     // page reload silently throws away a result the user just got back from the backend.
     try {
       const saved = JSON.parse(sessionStorage.getItem("nutrasmart_messages") || "null");
-      if (Array.isArray(saved) && saved.length) return saved;
+      // Re-key on restore: older saves used a counter that restarted every reload.
+      if (Array.isArray(saved) && saved.length) return saved.map((m) => ({ ...m, id: uid() }));
     } catch {}
     return [
       { id: uid(), role: "assistant", text: "Hey! 👋 I'm NutraSmart. Snap a photo of your meal or ask me anything about your nutrition." },
@@ -343,7 +356,7 @@ export default function App() {
       </header>
 
       <main className="thread">
-        {messages.map((m) => <Bubble key={m.id} m={m} />)}
+        {messages.map((m) => <MessageBoundary key={m.id}><Bubble m={m} /></MessageBoundary>)}
         {busy && <TypingDots />}
         <div ref={endRef} />
       </main>
