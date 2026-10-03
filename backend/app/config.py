@@ -53,6 +53,10 @@ BEDROCK_REGION = "ap-south-1"
 AGENT_RUNTIME_ARN = os.environ.get("AGENT_RUNTIME_ARN", "")
 AGENTCORE_REGION = os.environ.get("AGENTCORE_REGION", "us-east-1")
 
+# Default botocore read timeout (~60s) is too short for slower actions (face_scan: video
+# download + MediaPipe extraction; analyze: first-request torch/classifier import).
+AGENT_INVOKE_READ_TIMEOUT_S = float(os.environ.get("AGENT_INVOKE_READ_TIMEOUT_S", "300"))
+
 # Local development: when set (e.g. http://localhost:8080), every agent call goes to the
 # locally running agent's /invocations endpoint instead of the deployed AgentCore runtime.
 AGENT_LOCAL_URL = os.environ.get("AGENT_LOCAL_URL", "").rstrip("/")

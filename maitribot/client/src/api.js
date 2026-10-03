@@ -71,11 +71,13 @@ export async function analyze(images) {
 }
 
 export async function faceScan(key, contentType) {
+  // Video download + MediaPipe extraction (+ first-request classifier import) can run
+  // well past the default 30s client timeout -- give this one much more room.
   return req("/facescan/analyze", {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ key, content_type: contentType }),
-  });
+  }, 280000);
 }
 
 export async function chat(message, history = []) {

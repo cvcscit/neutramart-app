@@ -17,9 +17,11 @@ from functools import lru_cache
 
 import boto3
 import requests
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import (
+    AGENT_INVOKE_READ_TIMEOUT_S,
     AGENT_LOCAL_TIMEOUT_S,
     AGENT_LOCAL_URL,
     AGENTCORE_REGION,
@@ -36,7 +38,13 @@ class AgentError(Exception):
 
 @lru_cache(maxsize=None)
 def _client(region: str):
-    return boto3.client("bedrock-agentcore", region_name=region)
+    # Default botocore read timeout (~60s) is too short for face_scan (video download +
+    # MediaPipe extraction + first-request torch import can run well past a minute).
+    return boto3.client(
+        "bedrock-agentcore",
+        region_name=region,
+        config=Config(read_timeout=AGENT_INVOKE_READ_TIMEOUT_S, connect_timeout=10),
+    )
 
 
 def _region_from_arn(arn: str) -> str:
