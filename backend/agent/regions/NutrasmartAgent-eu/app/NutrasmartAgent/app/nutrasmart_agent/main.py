@@ -204,6 +204,20 @@ def _save_scan(user_id: str, analysis: dict, image_keys: list) -> None:
     )
 
 
+def _save_vitals_scan(user_id: str, result: dict, video_key: str) -> None:
+    """Durable record of a face-scan result, mirrored from _save_scan's pattern, so a
+    result isn't lost if the browser's local state is cleared. Separate prefix from food
+    scans since these are a different kind of record (heart_rate/bp/spo2, not nutrition)."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    scan_key = f"users/{user_id}/vitals_scans/{timestamp}.json"
+    s3.put_object(
+        Bucket=S3_BUCKET_NAME,
+        Key=scan_key,
+        Body=json.dumps({**result, "timestamp": timestamp, "video_key": video_key}),
+        ContentType="application/json",
+    )
+
+
 # ─── Action handlers ─────────────────────────────────────────────────────────────────
 @lru_cache(maxsize=1)
 def _food_scan_services() -> AgentServices:
@@ -288,10 +302,16 @@ def _handle_analyze(payload: dict) -> dict:
 def _handle_face_scan(payload: dict) -> dict:
     """Face-scan video -> heart rate, blood pressure, SpO2. See
     face_scan_biomarkers/__init__.py for the validation status of each field."""
+    user_id = payload["user_id"]
     key = payload.get("key")
     if not key:
         raise ValueError("Missing video key in payload.")
-    return analyze_face_scan(key, user_s3=s3, user_bucket=S3_BUCKET_NAME, services=_biomarker_services())
+    result = analyze_face_scan(key, user_s3=s3, user_bucket=S3_BUCKET_NAME, services=_biomarker_services())
+    try:
+        _save_vitals_scan(user_id, result, key)
+    except Exception as e:  # don't fail the request if the scan save fails
+        logger.warning("Vitals scan save failed for %s: %s", user_id, e)
+    return result
 
 
 _HANDLERS = {

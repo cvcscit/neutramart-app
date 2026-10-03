@@ -238,9 +238,17 @@ export default function App() {
       return { email: d.email, firstName: d.given_name, picture: d.picture };
     } catch { return null; }
   });
-  const [messages, setMessages] = useState([
-    { id: uid(), role: "assistant", text: "Hey! 👋 I'm NutraSmart. Snap a photo of your meal or ask me anything about your nutrition." },
-  ]);
+  const [messages, setMessages] = useState(() => {
+    // Restore the conversation (incl. scan results) across refreshes -- otherwise a
+    // page reload silently throws away a result the user just got back from the backend.
+    try {
+      const saved = JSON.parse(sessionStorage.getItem("nutrasmart_messages") || "null");
+      if (Array.isArray(saved) && saved.length) return saved;
+    } catch {}
+    return [
+      { id: uid(), role: "assistant", text: "Hey! 👋 I'm NutraSmart. Snap a photo of your meal or ask me anything about your nutrition." },
+    ];
+  });
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [dash, setDash] = useState(false);
@@ -249,6 +257,14 @@ export default function App() {
   const endRef = useRef(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
+
+  useEffect(() => {
+    try {
+      // Drop blob: thumb URLs before persisting -- they're invalidated on reload anyway.
+      const persistable = messages.map(({ thumb, ...rest }) => rest);
+      sessionStorage.setItem("nutrasmart_messages", JSON.stringify(persistable));
+    } catch {}
+  }, [messages]);
 
   const add = (m) => setMessages((prev) => [...prev, { id: uid(), ...m }]);
 
