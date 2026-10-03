@@ -14,7 +14,11 @@ GOOGLE_CLIENT_ID = os.environ.get(
 ALLOWED_ORIGINS = [
     o.strip()
     for o in os.environ.get(
-        "ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:5174,https://nutrasmart.in"
+        "ALLOWED_ORIGINS",
+        "http://localhost:5173,http://localhost:5174,https://nutrasmart.in,"
+        "http://maitribot-demo-ui.s3-website.ap-south-1.amazonaws.com,"
+        "https://maitribot-demo-ui.s3.ap-south-1.amazonaws.com,"
+        "https://maitribot-demo-ui.s3.amazonaws.com",
     ).split(",")
     if o.strip()
 ]

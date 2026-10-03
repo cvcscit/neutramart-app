@@ -16,11 +16,23 @@ app = FastAPI()
 app.state.limiter = limiter
 
 
+# Narrow, explicit carve-out: a public S3-hosted demo build of the maitribot UI needs to
+# reach this backend directly while CloudFront is account-wide blocked (see
+# documents/MIGRATION_OUTSTANDING_TASKS.md). The demo build cannot embed CF_ORIGIN_SECRET
+# -- that secret would be extractable from public JS, defeating its purpose -- so instead
+# this one Origin is explicitly allowed to skip the check. Remove once CloudFront is
+# restored and the real domain-based access path is back.
+DEMO_ORIGIN_EXEMPT = "http://maitribot-demo-ui.s3-website.ap-south-1.amazonaws.com"
+
+
 class OriginVerifyMiddleware(BaseHTTPMiddleware):
-    """Block direct ALB access — only allow requests through CloudFront."""
+    """Block direct ALB access — only allow requests through CloudFront (plus the
+    explicit DEMO_ORIGIN_EXEMPT carve-out above)."""
     async def dispatch(self, request: Request, call_next):
-        # Skip check if no secret configured (local dev) or for health checks
-        if not CF_ORIGIN_SECRET or request.url.path == "/health":
+        # Skip check if no secret configured (local dev), for health checks, or for the
+        # public demo origin (see DEMO_ORIGIN_EXEMPT comment).
+        if (not CF_ORIGIN_SECRET or request.url.path == "/health"
+                or request.headers.get("origin") == DEMO_ORIGIN_EXEMPT):
             return await call_next(request)
         if request.headers.get("X-Origin-Verify") != CF_ORIGIN_SECRET:
             return JSONResponse(status_code=403, content={"detail": "Forbidden"})
