@@ -16,16 +16,15 @@ Data model (S3 bucket ``sci-neutrasmart-project`` in ap-south-1):
     users/{user_id}/weekly_summary.txt   generated eating summary
     users/{user_id}/health_profile.json  optional health profile
 
-``analyze`` is implemented by the self-contained ``food_scan/`` package (local EfficientNet
-classifier + vision-LLM fallback) -- owned by a different workstream, kept in its own
-subpackage with its own settings/AWS clients so it can keep evolving independently of
-chat/summary/face_scan below. See food_scan/__init__.py.
+``analyze`` and ``face_scan`` are each implemented by their own self-contained subpackage
+(``food_scan/``, ``face_scan_biomarkers/``) -- separate workstreams, each owning its own
+settings/AWS clients/model cache so they can keep evolving independently of this module
+and of each other. See their respective __init__.py files.
 """
 
 import json
 import logging
 import os
-import tempfile
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
@@ -35,13 +34,13 @@ from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent, tool
 from strands.models import BedrockModel
 
-from app.dsv.extract import extract_video
-from app.dsv.heart_rate import measure_hr, HRGate
-from app.dsv.features import compute_features
-
 from .food_scan.analysis import ImageRef, analyze_food_images
 from .food_scan.services import AgentServices, build_services
 from .food_scan.settings import load_settings as load_food_scan_settings
+
+from .face_scan_biomarkers.analysis import analyze_face_scan
+from .face_scan_biomarkers.services import BiomarkerServices, build_services as build_biomarker_services
+from .face_scan_biomarkers.settings import load_settings as load_biomarker_settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nutrasmart_agent")
@@ -59,74 +58,6 @@ s3 = boto3.client("s3", region_name=S3_REGION)
 bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
 
 app = BedrockAgentCoreApp()
-
-# ─── Face scan (heart rate, blood pressure, SpO2) ──────────────────────────────────────
-# Separate bucket/region from user data: this is the biomarker model-training pipeline's
-# output (see biomarker-processing S3 bucket + Glue jobs).
-#
-# IMPORTANT STATUS NOTE: only the heart-rate gate has been validated against a held-out
-# test set with meaningful accuracy (see BP_measurement/README.md, "Results"). The BP and
-# SpO2 models trained by this pipeline so far are either unvalidated (SpO2 -- never run
-# against real ground truth) or shown in the source repo's own benchmarks to not beat a
-# naive age/sex baseline (BP, on the MCD-rPPG dataset). They are wired up and returned
-# here because the product decision was to surface all three, but every bp/spo2 response
-# below carries an explicit "experimental" flag the UI must not hide from the user.
-BIOMARKER_BUCKET = os.environ.get("BIOMARKER_BUCKET", "biomarker-processing")
-BIOMARKER_REGION = os.environ.get("BIOMARKER_REGION", "us-east-1")
-HR_GATE_KEY = os.environ.get("HR_GATE_KEY", "models/hr/latest/gate.joblib")
-BP_MODEL_KEY = os.environ.get("BP_MODEL_KEY", "models/bp/latest/model.joblib")
-SPO2_MODEL_KEY = os.environ.get("SPO2_MODEL_KEY", "models/spo2/latest/model.joblib")
-MAX_VIDEO_SIZE_BYTES = 400 * 1024 * 1024  # 400MB, matches BP_measurement/app/server.py default
-
-biomarker_s3 = boto3.client("s3", region_name=BIOMARKER_REGION)
-_model_cache = {}
-_model_load_failed = set()
-
-
-def _load_hr_gate():
-    """Lazily load and cache the trained HR reliability gate from S3.
-
-    Returns None (and logs) if no model has been promoted to models/hr/latest/ yet --
-    callers must treat that as "feature not yet available", never fall back to an
-    untrained/ungated heart rate reading.
-    """
-    if "hr" in _model_cache or "hr" in _model_load_failed:
-        return _model_cache.get("hr")
-    try:
-        import joblib
-        with tempfile.NamedTemporaryFile(suffix=".joblib") as tmp:
-            biomarker_s3.download_file(BIOMARKER_BUCKET, HR_GATE_KEY, tmp.name)
-            d = joblib.load(tmp.name)
-        _model_cache["hr"] = HRGate(d["model"], d["threshold"], d["features"], d.get("info"))
-        logger.info("Loaded HR gate from s3://%s/%s", BIOMARKER_BUCKET, HR_GATE_KEY)
-    except Exception as e:
-        logger.warning("HR gate not available (s3://%s/%s): %s", BIOMARKER_BUCKET, HR_GATE_KEY, e)
-        _model_load_failed.add("hr")
-    return _model_cache.get("hr")
-
-
-def _load_regression_bundle(name, key):
-    """Lazily load and cache a BP/SpO2 model bundle (dict with 'models', 'features', ...)
-    as saved by scripts/glue/{bp,spo2}/train_glue.py. Returns None if not yet promoted."""
-    if name in _model_cache or name in _model_load_failed:
-        return _model_cache.get(name)
-    try:
-        import joblib
-        with tempfile.NamedTemporaryFile(suffix=".joblib") as tmp:
-            biomarker_s3.download_file(BIOMARKER_BUCKET, key, tmp.name)
-            _model_cache[name] = joblib.load(tmp.name)
-        logger.info("Loaded %s model from s3://%s/%s", name, BIOMARKER_BUCKET, key)
-    except Exception as e:
-        logger.warning("%s model not available (s3://%s/%s): %s", name, BIOMARKER_BUCKET, key, e)
-        _model_load_failed.add(name)
-    return _model_cache.get(name)
-
-
-def _predict_bundle(bundle, feats):
-    """Apply a trained BP/SpO2 bundle's per-target sklearn models to one feature dict."""
-    import pandas as pd
-    X = pd.DataFrame([{c: feats.get(c, float("nan")) for c in bundle["features"]}])
-    return {t: round(float(m.predict(X)[0]), 1) for t, m in bundle["models"].items()}
 
 WEEKLY_SUMMARY_PROMPT = (
     "You are a nutrition and dietary advisor. Below are the food analysis records "
@@ -281,6 +212,13 @@ def _food_scan_services() -> AgentServices:
     return build_services(load_food_scan_settings())
 
 
+@lru_cache(maxsize=1)
+def _biomarker_services() -> BiomarkerServices:
+    """Build face_scan_biomarkers' own settings, S3 client and model cache, once per
+    container. Fully independent of this module's s3/bedrock clients above."""
+    return build_biomarker_services(load_biomarker_settings())
+
+
 
 def _model() -> BedrockModel:
     return BedrockModel(model_id=BEDROCK_MODEL_ID, region_name=BEDROCK_REGION)
@@ -348,67 +286,12 @@ def _handle_analyze(payload: dict) -> dict:
 
 
 def _handle_face_scan(payload: dict) -> dict:
-    """Face-scan video -> heart rate, blood pressure, SpO2.
-
-    heart_rate is a validated wellness estimate (trained + tested gate, see README).
-    bp and spo2 are RESEARCH/EXPERIMENTAL -- always returned with "experimental": true
-    and a disclaimer, since neither has cleared real-data validation yet (see the
-    BIOMARKER_BUCKET comment above). The frontend must display that disclaimer, not
-    hide it, whenever these fields are shown.
-    """
+    """Face-scan video -> heart rate, blood pressure, SpO2. See
+    face_scan_biomarkers/__init__.py for the validation status of each field."""
     key = payload.get("key")
     if not key:
         raise ValueError("Missing video key in payload.")
-
-    head = s3.head_object(Bucket=S3_BUCKET_NAME, Key=key)
-    if head["ContentLength"] > MAX_VIDEO_SIZE_BYTES:
-        raise ValueError("Video is too large (max 400MB).")
-
-    suffix = os.path.splitext(key)[1] or ".mp4"
-    with tempfile.NamedTemporaryFile(suffix=suffix) as tmp:
-        s3.download_file(S3_BUCKET_NAME, key, tmp.name)
-        raw = extract_video(tmp.name)
-
-    out = {}
-
-    gate = _load_hr_gate()
-    if gate is None:
-        out["heart_rate"] = {
-            "status": "unavailable",
-            "reason": "Heart-rate model is not deployed yet. Please check back later.",
-        }
-    else:
-        out["heart_rate"] = measure_hr(raw, gate=gate)
-
-    # BP/SpO2 need the fuller feature set (rPPG+rBCG+quality), not just the HR window
-    # features measure_hr() computes -- only run this if at least one model is present.
-    bp_bundle = _load_regression_bundle("bp", BP_MODEL_KEY)
-    spo2_bundle = _load_regression_bundle("spo2", SPO2_MODEL_KEY)
-    if bp_bundle or spo2_bundle:
-        try:
-            feats = compute_features(raw)
-        except Exception as e:
-            logger.warning("Feature computation failed for face scan: %s", e)
-            feats = None
-
-        for name, bundle, key_out in (("bp", bp_bundle, "bp"), ("spo2", spo2_bundle, "spo2")):
-            if bundle is None:
-                out[key_out] = {"status": "unavailable", "reason": f"{name.upper()} model is not deployed yet."}
-                continue
-            if feats is None:
-                out[key_out] = {"status": "withheld", "reason": "signal quality too low for this scan."}
-                continue
-            pred = _predict_bundle(bundle, feats)
-            result = {"status": "ok", "experimental": True,
-                      "disclaimer": ("Research estimate only. Not validated for medical or "
-                                     "consumer health decisions -- do not rely on this value.")}
-            result.update(pred)
-            out[key_out] = result
-    else:
-        out["bp"] = {"status": "unavailable", "reason": "BP model is not deployed yet."}
-        out["spo2"] = {"status": "unavailable", "reason": "SpO2 model is not deployed yet."}
-
-    return out
+    return analyze_face_scan(key, user_s3=s3, user_bucket=S3_BUCKET_NAME, services=_biomarker_services())
 
 
 _HANDLERS = {
