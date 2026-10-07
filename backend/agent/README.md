@@ -108,6 +108,89 @@ The runtime role needs `s3:GetObject` on every model object.
 | `FOOD_CLASSIFIER_CACHE_DIR` | `/tmp/food_models` |
 | `FOOD_CLASSIFIER_DEVICE` | `cpu` (`cuda` for local GPU runs only; AgentCore has no GPU) |
 
+## Run food recognition locally
+
+Run all commands from `backend/agent`. The three cuisine checkpoints are in the `food-detection-model`
+bucket. Locally, read them from the mount (`/home/mario/data/welness360/s3/food-detection-model`) or
+any local copy, so nothing has to be downloaded:
+
+```bash
+M=/home/mario/data/welness360/s3/food-detection-model
+export FOOD_CLASSIFIER_ENABLED=true
+export FOOD_CLASSIFIER_MODELS="chinese=$M/chinese/nutrasmart_efficientnetv2s_best.pt,indian=$M/indian/nutrasmart_efficientnetv2s_best.pt,thai=$M/thai/thai_nutrasmart_efficientnetv2s_best.pt"
+```
+
+### 1. Unit tests (no AWS, no checkpoints)
+
+```bash
+venv_agent/bin/python -m pytest -q app tests
+```
+
+### 2. Classifier only (no AWS, no Bedrock)
+
+This runs the cuisine-model ensemble on local images through the production code path. For each
+image it prints the winning model, its top-k predictions, and whether the result would take the
+classifier route or fall back to the vision LLM (`FOOD_CLASSIFIER_THRESHOLD`, default 0.60).
+
+```bash
+venv_agent/bin/python app/nutrasmart_agent/food_scan/scripts/classify_images.py photo1.jpg photo2.png
+```
+
+```
+chinese_Screenshot 2026-10-04 232949.png: model=chinese -> classifier (threshold 0.60)
+     91.1%  Braised Pork
+      2.5%  Dongpo Pork
+     ...
+```
+
+The first call loads the three checkpoints (about 15 s on CPU). To measure accuracy on a labelled
+folder (one model at a time), use `scripts/evaluate_classifier.py` (see *Local GPU* below).
+
+### 3. Full `analyze` through the local agent server (needs AWS)
+
+This exercises the whole flow: S3 image fetch, classifier ensemble, Bedrock nutrition call, and saving
+the scan.
+
+1. Install the full runtime dependencies once. `venv_agent` has torch but not the face-scan
+   dependencies (`opencv`, `mediapipe`), which `main.py` imports:
+   ```bash
+   uv venv -p 3.12 .venv
+   VIRTUAL_ENV=$PWD/.venv uv pip install -r requirements.txt
+   ```
+2. Use credentials for the deploy account (792207721590) and target one deployment's bucket and
+   Bedrock model (here: US). Keep the `FOOD_CLASSIFIER_*` exports from above; local paths mean
+   no checkpoint download.
+   ```bash
+   export AWS_PROFILE=<deploy-profile>
+   export AWS_REGION=us-east-1 BEDROCK_REGION=us-east-1
+   export BEDROCK_MODEL_ID=global.anthropic.claude-haiku-4-5-20251001-v1:0
+   export S3_BUCKET_NAME=w360-nutrasmart-us S3_REGION=us-east-1
+   ```
+3. Upload a test photo. `analyze` reads images from `S3_BUCKET_NAME` only:
+   ```bash
+   aws s3 cp photo.jpg s3://w360-nutrasmart-us/users/local-test/uploads/photo.jpg
+   ```
+4. Start the server (AgentCore HTTP contract on port 8080) and invoke it from another terminal:
+   ```bash
+   .venv/bin/python -m app.nutrasmart_agent.main
+   ```
+   ```bash
+   curl -s localhost:8080/invocations -H 'Content-Type: application/json' -d '{
+     "action": "analyze", "user_id": "local-test",
+     "images": [{"key": "users/local-test/uploads/photo.jpg", "content_type": "image/jpeg"}]
+   }' | python -m json.tool
+   ```
+   In the response, `recognition.source` is `classifier` or `llm`, `recognition.models` names the
+   winning cuisine model per image, and `recognition.predictions` lists the top-k. The server log
+   has one `food_analysis` line with the same data and the latency.
+
+`analyze` also saves the result to `s3://<S3_BUCKET_NAME>/users/local-test/scans/<timestamp>.json`.
+Use a throwaway `user_id`, and delete `users/local-test/` when you're done.
+
+To test the S3 download path the deployed agents use, point `FOOD_CLASSIFIER_MODELS` at the
+`s3://biomarker-processing/models/food/...` URIs instead (`FOOD_CLASSIFIER_MODEL_REGION`, default
+`us-east-1`). The files are cached under `FOOD_CLASSIFIER_CACHE_DIR` (`/tmp/food_models`).
+
 ## Tests
 
 ```bash
