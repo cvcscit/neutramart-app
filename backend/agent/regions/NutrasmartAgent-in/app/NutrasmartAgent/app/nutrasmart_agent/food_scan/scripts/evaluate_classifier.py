@@ -38,7 +38,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.nutrasmart_agent.food_scan.analysis import decode_image  # noqa: E402
 from app.nutrasmart_agent.food_scan.recognition import ClassifierError, build_classifier  # noqa: E402
-from app.nutrasmart_agent.food_scan.settings import CLASSIFIER_DEVICES, ClassifierSettings, load_settings  # noqa: E402
+from app.nutrasmart_agent.food_scan.settings import (  # noqa: E402
+    CLASSIFIER_DEVICES,
+    ClassifierModel,
+    ClassifierSettings,
+    load_settings,
+)
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
 UNSEEN_SPLIT = "unseen"
@@ -85,11 +90,12 @@ class SplitStats:
 def parse_args(defaults: ClassifierSettings) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("data_dir", type=Path, help="Directory with one sub-folder per label.")
+    default_model = defaults.models[0].uri if defaults.models else None
     parser.add_argument(
         "--model",
-        default=defaults.model_uri or None,
-        required=not defaults.model_uri,
-        help="Checkpoint path or s3:// URI (default: FOOD_CLASSIFIER_MODEL_URI).",
+        default=default_model,
+        required=default_model is None,
+        help="Checkpoint path or s3:// URI (default: the first entry of FOOD_CLASSIFIER_MODELS).",
     )
     parser.add_argument("--backend", default=defaults.backend, help="Classifier backend name.")
     parser.add_argument(
@@ -247,7 +253,8 @@ def main() -> int:
     settings = ClassifierSettings(
         enabled=True,
         backend=args.backend,
-        model_uri=str(args.model),
+        models=(ClassifierModel(name=Path(args.model).stem, uri=str(args.model)),),
+        model_region=defaults.model_region,
         threshold=args.threshold,
         top_k=args.top_k,
         cache_dir=defaults.cache_dir,
@@ -256,10 +263,10 @@ def main() -> int:
     )
     # boto3 is only needed for s3:// model URIs; build the client lazily for that case.
     s3 = None
-    if settings.model_uri.startswith("s3://"):
+    if str(args.model).startswith("s3://"):
         from app.nutrasmart_agent.food_scan.services import build_services
 
-        s3 = build_services(load_settings()).s3
+        s3 = build_services(load_settings()).model_s3
     classifier = build_classifier(settings, s3)
 
     splits_by_sha = load_manifest_splits(args.manifest)

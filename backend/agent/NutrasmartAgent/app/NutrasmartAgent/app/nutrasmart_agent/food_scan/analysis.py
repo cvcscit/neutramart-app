@@ -3,7 +3,9 @@
 ``FOOD_RECOGNITION_ORDER`` picks which recognizer runs first; the other is the fallback
 when the first one's answer is not good enough.
 
-* **Classifier** (``source = "classifier"``): every image is classified and the score is
+* **Classifier** (``source = "classifier"``): an ensemble of cuisine models
+  (``FOOD_CLASSIFIER_MODELS``); per image, the model with the highest top-1 confidence
+  wins and is recorded in ``recognition.models``. Every image is classified and the score is
   the *lowest* top-1 confidence across images. It is good enough when that reaches
   ``FOOD_CLASSIFIER_THRESHOLD``. Its dish names then go to a cheap text-only LLM call
   that estimates nutrition.
@@ -293,6 +295,7 @@ def _recognition_block(outcome: Outcome, settings: AgentSettings) -> dict:
         "llm_threshold": settings.llm_confidence_threshold,
         "llm_confidence": outcome.llm_score,
         "fallback_used": outcome.fallback_used,
+        "models": [result.model for result in outcome.results or []],
         "predictions": [
             [prediction.to_dict() for prediction in result.predictions]
             for result in outcome.results or []
@@ -322,7 +325,7 @@ def analyze_food_images(
         "fallback_used": outcome.fallback_used,
         "images": len(images),
         "top": [
-            {"food_id": r.top.food_id, "confidence": round(r.top.confidence, 4)}
+            {"model": r.model, "food_id": r.top.food_id, "confidence": round(r.top.confidence, 4)}
             for r in outcome.results or []
         ],
         "llm_confidence": outcome.llm_score,

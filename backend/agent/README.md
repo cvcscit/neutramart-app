@@ -65,15 +65,25 @@ in either order.
 - The model loads lazily on the first `analyze` request per container (chat/summary never load
   torch). If it cannot be loaded, the error is logged and the agent uses the vision LLM only.
 
+**Cuisine models**
+- The classifier is an ensemble: every checkpoint in `FOOD_CLASSIFIER_MODELS` (today Chinese, Indian
+  and Thai) classifies each image, and the prediction with the highest top-1 confidence wins (ties go
+  to the model listed first). `recognition.models` records the winning model per image. The models are
+  not jointly calibrated (fewer classes tend to give higher softmax peaks), so watch per-model win
+  rates when tuning `FOOD_CLASSIFIER_THRESHOLD`.
+- Checkpoints live in `s3://biomarker-processing/models/food/<cuisine>/` (us-east-1, readable through the
+  existing `BiomarkerModelsAccess` grant) and are downloaded with an S3 client pinned to
+  `FOOD_CLASSIFIER_MODEL_REGION`.
+
 **Swapping the model**
-- Same architecture, new weights: upload the checkpoint to S3 and point
-  `FOOD_CLASSIFIER_MODEL_URI` at it (the cache is keyed by ETag, so replacing the object also works).
+- Same architecture, new weights: upload the checkpoint to S3 and add or replace its `name=uri` entry
+  in `FOOD_CLASSIFIER_MODELS` (the cache is keyed by ETag, so replacing the object also works).
 - New architecture: add a class implementing `recognition.base.FoodClassifier`, register a loader in
   `recognition/factory.py::CLASSIFIER_BACKENDS`, and set `FOOD_CLASSIFIER_BACKEND`.
 
 Checkpoints are loaded with `torch.load(weights_only=True)` and must contain `model_state_dict`,
 `class_names` and `class_to_index` (optionally `architecture`, `image_size`, `imagenet_mean`, `imagenet_std`).
-The runtime role needs `s3:GetObject` on the model object.
+The runtime role needs `s3:GetObject` on every model object.
 
 ## Environment variables
 
@@ -91,7 +101,8 @@ The runtime role needs `s3:GetObject` on the model object.
 | `LLM_CONFIDENCE_THRESHOLD` | `0.60` |
 | `FOOD_CLASSIFIER_ENABLED` | `false` |
 | `FOOD_CLASSIFIER_BACKEND` | `efficientnet_v2_s` |
-| `FOOD_CLASSIFIER_MODEL_URI` | — (required when enabled; `s3://…` or a local path) |
+| `FOOD_CLASSIFIER_MODELS` | — (required when enabled; comma-separated `name=uri`, each `s3://…` or a local path) |
+| `FOOD_CLASSIFIER_MODEL_REGION` | `us-east-1` (region of the model bucket) |
 | `FOOD_CLASSIFIER_THRESHOLD` | `0.60` |
 | `FOOD_CLASSIFIER_TOP_K` / `FOOD_CLASSIFIER_NUM_THREADS` | `5` / `2` |
 | `FOOD_CLASSIFIER_CACHE_DIR` | `/tmp/food_models` |

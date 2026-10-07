@@ -39,6 +39,18 @@
         {
           "name": "S3_REGION",
           "value": "ap-south-1"
+        },
+        {
+          "name": "FOOD_CLASSIFIER_ENABLED",
+          "value": "true"
+        },
+        {
+          "name": "FOOD_CLASSIFIER_MODEL_REGION",
+          "value": "us-east-1"
+        },
+        {
+          "name": "FOOD_CLASSIFIER_MODELS",
+          "value": "chinese=s3://biomarker-processing/models/food/chinese/nutrasmart_efficientnetv2s_best.pt,indian=s3://biomarker-processing/models/food/indian/nutrasmart_efficientnetv2s_best.pt,thai=s3://biomarker-processing/models/food/thai/nutrasmart_efficientnetv2s_best.pt"
         }
       ]
     }

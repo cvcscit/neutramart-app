@@ -24,12 +24,24 @@ class RecognitionOrder(str, Enum):
 
 
 @dataclass(frozen=True)
+class ClassifierModel:
+    """One named checkpoint (e.g. a cuisine) in the classifier ensemble."""
+
+    name: str
+    uri: str
+
+
+@dataclass(frozen=True)
 class ClassifierSettings:
-    """Configuration for the local food-image classifier (first-pass recognition)."""
+    """Configuration for the local food-image classifier (first-pass recognition).
+
+    ``models`` are all run on every image; the most confident top-1 prediction wins.
+    """
 
     enabled: bool
     backend: str
-    model_uri: str
+    models: tuple[ClassifierModel, ...]
+    model_region: str
     threshold: float
     top_k: int
     cache_dir: str
@@ -95,6 +107,19 @@ def _get_recognition_order(env: Mapping[str, str]) -> RecognitionOrder:
         raise ValueError(f"FOOD_RECOGNITION_ORDER must be one of {allowed}, got {raw!r}") from None
 
 
+def _parse_models(raw: str) -> tuple[ClassifierModel, ...]:
+    """Parse ``FOOD_CLASSIFIER_MODELS`` (``name=uri,name=uri``), keeping the configured order."""
+    models: list[ClassifierModel] = []
+    for entry in filter(None, (part.strip() for part in raw.split(","))):
+        name, sep, uri = (piece.strip() for piece in entry.partition("="))
+        if not sep or not name or not uri:
+            raise ValueError(f"FOOD_CLASSIFIER_MODELS entries must be name=uri, got {entry!r}")
+        if any(model.name == name for model in models):
+            raise ValueError(f"FOOD_CLASSIFIER_MODELS has a duplicate model name {name!r}")
+        models.append(ClassifierModel(name=name, uri=uri))
+    return tuple(models)
+
+
 def _load_classifier_settings(env: Mapping[str, str]) -> ClassifierSettings:
     threshold = _get_unit_float(env, "FOOD_CLASSIFIER_THRESHOLD", 0.60)
     device = env.get("FOOD_CLASSIFIER_DEVICE", "cpu").strip().lower()
@@ -104,15 +129,17 @@ def _load_classifier_settings(env: Mapping[str, str]) -> ClassifierSettings:
     settings = ClassifierSettings(
         enabled=_get_bool(env, "FOOD_CLASSIFIER_ENABLED", False),
         backend=env.get("FOOD_CLASSIFIER_BACKEND", "efficientnet_v2_s"),
-        model_uri=env.get("FOOD_CLASSIFIER_MODEL_URI", ""),
+        models=_parse_models(env.get("FOOD_CLASSIFIER_MODELS", "")),
+        # Region of the bucket holding the checkpoints, which may differ from S3_REGION.
+        model_region=env.get("FOOD_CLASSIFIER_MODEL_REGION", "us-east-1"),
         threshold=threshold,
         top_k=_get_int(env, "FOOD_CLASSIFIER_TOP_K", 5, minimum=1),
         cache_dir=env.get("FOOD_CLASSIFIER_CACHE_DIR", "/tmp/food_models"),
         num_threads=_get_int(env, "FOOD_CLASSIFIER_NUM_THREADS", 2, minimum=1),
         device=device,
     )
-    if settings.enabled and not settings.model_uri:
-        raise ValueError("FOOD_CLASSIFIER_MODEL_URI is required when FOOD_CLASSIFIER_ENABLED is true")
+    if settings.enabled and not settings.models:
+        raise ValueError("FOOD_CLASSIFIER_MODELS is required when FOOD_CLASSIFIER_ENABLED is true")
     return settings
 
 

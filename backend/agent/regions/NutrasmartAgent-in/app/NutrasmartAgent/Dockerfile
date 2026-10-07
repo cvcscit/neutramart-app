@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 
 # Food-classifier weights are not baked in: they are downloaded from
-# FOOD_CLASSIFIER_MODEL_URI (S3) on the first analyze request and cached here.
+# FOOD_CLASSIFIER_MODELS (S3) on the first analyze request and cached here.
 ENV FOOD_CLASSIFIER_CACHE_DIR=/tmp/food_models
 
 # AgentCore Runtime invokes the HTTP server on port 8080 (POST /invocations, GET /ping).

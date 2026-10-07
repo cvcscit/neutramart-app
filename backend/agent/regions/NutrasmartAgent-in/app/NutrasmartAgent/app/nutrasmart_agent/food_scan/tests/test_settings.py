@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.nutrasmart_agent.food_scan.settings import RecognitionOrder, load_settings
+from app.nutrasmart_agent.food_scan.settings import ClassifierModel, RecognitionOrder, load_settings
 
 
 def test_defaults_keep_classifier_disabled():
@@ -17,12 +17,14 @@ def test_defaults_keep_classifier_disabled():
 def test_classifier_env_overrides():
     settings = load_settings({
         "FOOD_CLASSIFIER_ENABLED": "true",
-        "FOOD_CLASSIFIER_MODEL_URI": "s3://b/models/food.pt",
+        "FOOD_CLASSIFIER_MODELS": "main=s3://b/models/food.pt",
+        "FOOD_CLASSIFIER_MODEL_REGION": "us-east-2",
         "FOOD_CLASSIFIER_THRESHOLD": "0.75",
         "FOOD_CLASSIFIER_TOP_K": "3",
     })
     assert settings.classifier.enabled is True
-    assert settings.classifier.model_uri == "s3://b/models/food.pt"
+    assert settings.classifier.models == (ClassifierModel("main", "s3://b/models/food.pt"),)
+    assert settings.classifier.model_region == "us-east-2"
     assert settings.classifier.threshold == 0.75
     assert settings.classifier.top_k == 3
 
@@ -33,9 +35,30 @@ def test_threshold_out_of_range_rejected(value):
         load_settings({"FOOD_CLASSIFIER_THRESHOLD": value})
 
 
-def test_enabled_without_model_uri_rejected():
-    with pytest.raises(ValueError, match="FOOD_CLASSIFIER_MODEL_URI"):
+def test_enabled_without_models_rejected():
+    with pytest.raises(ValueError, match="FOOD_CLASSIFIER_MODELS"):
         load_settings({"FOOD_CLASSIFIER_ENABLED": "1"})
+
+
+def test_models_keep_configured_order():
+    settings = load_settings({
+        "FOOD_CLASSIFIER_MODELS": " chinese = s3://b/c.pt , indian=s3://b/i.pt,thai=/models/t.pt, ",
+    })
+    assert settings.classifier.models == (
+        ClassifierModel("chinese", "s3://b/c.pt"),
+        ClassifierModel("indian", "s3://b/i.pt"),
+        ClassifierModel("thai", "/models/t.pt"),
+    )
+
+
+def test_model_region_defaults_to_us_east_1():
+    assert load_settings({}).classifier.model_region == "us-east-1"
+
+
+@pytest.mark.parametrize("value", ["s3://b/c.pt", "=s3://b/c.pt", "chinese=", "a=x,a=y"])
+def test_malformed_models_rejected(value):
+    with pytest.raises(ValueError, match="FOOD_CLASSIFIER_MODELS"):
+        load_settings({"FOOD_CLASSIFIER_MODELS": value})
 
 
 def test_device_defaults_to_cpu_and_accepts_cuda():

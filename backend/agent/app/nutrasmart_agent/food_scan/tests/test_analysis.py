@@ -50,6 +50,7 @@ def test_all_confident_uses_text_only_llm(settings):
     result, bedrock = _run(2, classifier, settings)
 
     assert result["recognition"]["source"] == "classifier"
+    assert result["recognition"]["models"] == [None, None]
     assert len(bedrock.calls) == 1
     content = bedrock.last_content
     assert not _has_image_block(content)
@@ -87,6 +88,7 @@ def test_classifier_error_falls_back_to_vision(settings):
         "llm_threshold": 0.6,
         "llm_confidence": 0.9,
         "fallback_used": True,
+        "models": [],
         "predictions": [],
     }
     assert _has_image_block(bedrock.last_content)

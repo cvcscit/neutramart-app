@@ -31,9 +31,13 @@ class FoodPrediction:
 
 @dataclass(frozen=True)
 class ClassificationResult:
-    """Top-k predictions for one image, most confident first."""
+    """Top-k predictions for one image, most confident first.
+
+    ``model`` names the ensemble member that produced the predictions, when known.
+    """
 
     predictions: tuple[FoodPrediction, ...]
+    model: str | None = None
 
     @property
     def top(self) -> FoodPrediction:
