@@ -3,6 +3,7 @@ import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 import DashboardPanel from "./DashboardPanel.jsx";
 import FaceScanModal from "./FaceScanModal.jsx";
+import { PENDING_KEY as SENAI_PENDING_KEY } from "./senai_scan/ScanPage.jsx";
 import * as api from "./api.js";
 
 const SUGGESTIONS = [
@@ -271,6 +272,21 @@ export default function App() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
 
+  // The Shen.AI scan runs on its own isolated page (/scan.html) and hands the result back
+  // through sessionStorage, since it can't live in this document (see senai_scan/README).
+  useEffect(() => {
+    let pending = null;
+    try {
+      const raw = sessionStorage.getItem(SENAI_PENDING_KEY);
+      if (raw) {
+        pending = JSON.parse(raw);
+        sessionStorage.removeItem(SENAI_PENDING_KEY); // one-shot: don't replay on reload
+      }
+    } catch {}
+    if (pending) add({ role: "assistant", type: "vitals", data: pending });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     try {
       // Drop blob: thumb URLs before persisting -- they're invalidated on reload anyway.
@@ -370,6 +386,8 @@ export default function App() {
       <form className="composer" onSubmit={(e) => { e.preventDefault(); sendText(input); }}>
         <button type="button" className="icon-btn" title="Attach photo" onClick={() => fileRef.current?.click()}>📷</button>
         <button type="button" className="icon-btn" title="Scan vitals" onClick={() => setScanOpen(true)}>🫀</button>
+        <button type="button" className="icon-btn" title="Scan vitals (Shen.AI, on-device)"
+          onClick={() => { window.location.href = "/scan.html"; }}>🩺</button>
         <input ref={fileRef} type="file" accept="image/*" hidden
           onChange={(e) => { const f = e.target.files?.[0]; if (f) sendImage(f); e.target.value = ""; }} />
         <input className="text-input" placeholder="Message NutraSmart…" value={input}

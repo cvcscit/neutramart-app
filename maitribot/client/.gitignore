@@ -1,0 +1,6 @@
+node_modules
+dist
+
+# Copied from node_modules/@shenai/sdk by `npm run prepare:shenai` so Vite serves the
+# SDK's .wasm/worker files statically instead of trying to bundle them.
+public/shenai-sdk

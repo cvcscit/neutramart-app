@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NutraSmart · Vitals Scan</title>
+  </head>
+  <body>
+    <!-- Separate top-level page so it can be cross-origin isolated (COOP/COEP), which
+         the Shen.AI SDK requires. Those headers break Google login, so the main app at
+         / is deliberately NOT isolated. See src/senai_scan/README.md. -->
+    <div id="scan-root"></div>
+    <script type="module" src="/src/senai_scan/scanMain.jsx"></script>
+  </body>
+</html>

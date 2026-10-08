@@ -236,6 +236,37 @@ body { background: var(--page); color: var(--ink); }
 .scan-error { font-size: 13px; color: #dc2626; max-width: 260px; }
 .scan-action { padding: 10px 20px; }
 
+/* ---- Shen.AI scan (senai_scan) ---- */
+/* The SDK renders the camera + its overlay into this canvas; unlike .scan-video it
+   must not be mirrored, since the SDK draws its own correctly-oriented view.
+   480/894 is the aspect ratio the SDK's own examples use — its UI is laid out for a
+   tall portrait viewport, and it gets cropped/letterboxed at other ratios. */
+/* Standalone /scan.html page (cross-origin isolated; see senai_scan/README.md). */
+.scan-page { display: flex; flex-direction: column; height: 100vh; }
+.scan-page-body {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 16px; text-align: center;
+  overflow-y: auto;
+}
+
+/* Host div React owns; the canvas inside is managed imperatively (see ScanPage.jsx). */
+.senai-canvas-host {
+  width: 100%; display: flex; justify-content: center;
+}
+.senai-canvas {
+  width: 100%; max-width: 280px; aspect-ratio: 480 / 894;
+  max-height: 70vh;
+  border-radius: 12px; background: #0b0b0b;
+}
+.senai-progress {
+  width: 100%; max-width: 280px; height: 6px; border-radius: 999px;
+  background: rgba(127, 127, 127, .25); overflow: hidden;
+}
+.senai-progress-bar {
+  height: 100%; background: var(--green); border-radius: 999px;
+  transition: width .3s ease;
+}
+
 /* ---- vitals card ---- */
 .vitals-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 6px; }
 .vitals-tile { background: var(--page); border: 1px solid var(--line); border-radius: 12px; padding: 10px 8px; text-align: center; }
