@@ -67,7 +67,7 @@ export default function ScanPage() {
             if (!mountedRef.current) return;
             if (stage === "runtime") {
               const pct = p > 0 ? ` ${Math.round(p * 100)}%` : "";
-              setStatus(`Loading Shen.AI engine${pct}…`);
+              setStatus(`Loading scan engine${pct}…`);
             } else {
               setStatus("Activating licence…");
             }
@@ -146,7 +146,7 @@ export default function ScanPage() {
           <span className="logo">🫀</span>
           <div>
             <div className="brand-name">Vitals Scan</div>
-            <div className="brand-sub">Shen.AI · on-device</div>
+            <div className="brand-sub">On-device · private</div>
           </div>
         </div>
         <button className="dash-btn" onClick={() => (window.location.href = RETURN_TO)}>

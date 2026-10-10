@@ -6,7 +6,7 @@
 // medical measurements, so bp is flagged experimental exactly like the in-house
 // pipeline flags its own research-grade BP.
 
-const BP_DISCLAIMER = "Wellness estimate from Shen.AI — not a medical measurement";
+const BP_DISCLAIMER = "Wellness estimate — not a medical measurement";
 
 /** Shen.AI MeasurementResults -> { heart_rate, bp, spo2, extras } */
 export function toVitals(results) {
@@ -44,7 +44,7 @@ export function toVitals(results) {
           },
 
     // Shen.AI does not report SpO2 at all (see MeasurementResults in @shenai/sdk).
-    spo2: { status: "unavailable", reason: "Not measured by Shen.AI." },
+    spo2: { status: "unavailable", reason: "Not measured." },
 
     // Metrics the current VitalsCard doesn't show, kept so callers can use them
     // without re-reading the SDK.

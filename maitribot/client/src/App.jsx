@@ -27,28 +27,96 @@ function formatMetric(m, unit) {
   return { text: m.reason || "Not reliable — please rescan", ok: false };
 }
 
+// Extra metrics the Shen.AI scan returns in `extras` (see senai_scan/adapter.js). The
+// in-house face_scan_biomarkers pipeline doesn't produce these, so they're rendered only
+// when present rather than showing empty tiles on that path.
+// [label, key in extras, unit suffix, decimal places]
+const EXTRA_METRICS = [
+  ["HRV (SDNN)", "hrv_sdnn_ms", "ms", 0],
+  ["Breathing Rate", "breathing_rate_bpm", "/min", 0],
+  ["Stress Index", "stress_index", "", 1],
+];
+
+// Compact always-visible strip under the header showing the most recent scan, so the
+// numbers don't scroll away with the chat. Shares formatMetric/EXTRA_METRICS with
+// VitalsCard so the two can't drift apart.
+function VitalsStrip({ data }) {
+  const items = [];
+
+  const hr = formatMetric(data?.heart_rate, "bpm");
+  if (hr.ok) items.push(["Heart Rate", hr.text]);
+  const bp = formatMetric(data?.bp, "mmHg");
+  if (bp.ok) items.push(["Blood Pressure", bp.text]);
+  if (data?.source !== "shenai") {
+    const spo2 = formatMetric(data?.spo2, "%");
+    if (spo2.ok) items.push(["SpO2", spo2.text]);
+  }
+  for (const [label, key, unit, dp] of EXTRA_METRICS) {
+    const v = data?.extras?.[key];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      items.push([label, `${v.toFixed(dp)}${unit ? ` ${unit}` : ""}`]);
+    }
+  }
+
+  if (!items.length) return null;
+
+  return (
+    <div className="vitals-strip">
+      {items.map(([label, value]) => (
+        <div key={label} className="vitals-strip-tile">
+          <div className="vitals-k">{label}</div>
+          <div className="vitals-strip-v">{value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function VitalsCard({ data }) {
   const hr = formatMetric(data?.heart_rate, "bpm");
   const bp = formatMetric(data?.bp, "mmHg");
   const spo2 = formatMetric(data?.spo2, "%");
+  // Shen.AI doesn't measure SpO2 at all, so the tile would permanently read "Not
+  // available" on those scans. The in-house face_scan_biomarkers pipeline does produce
+  // it, so the tile is kept for that path (adapter.js tags Shen.AI results with
+  // source: "shenai").
   const rows = [
     ["Heart Rate", hr],
     ["Blood Pressure", bp],
-    ["Oxygen (SpO2)", spo2],
+    ...(data?.source === "shenai" ? [] : [["Oxygen (SpO2)", spo2]]),
   ];
+
+  const extras = EXTRA_METRICS.map(([label, key, unit, dp]) => {
+    const v = data?.extras?.[key];
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    return { label, text: `${v.toFixed(dp)}${unit ? ` ${unit}` : ""}` };
+  }).filter(Boolean);
+
   return (
     <div className="card analysis">
       <div className="card-body">
         <div className="card-title">🫀 Vitals Scan</div>
-        <div className="vitals-grid">
+        {/* Column count follows the tile count so hiding SpO2 doesn't leave a gap. */}
+        <div className="vitals-grid" style={{ gridTemplateColumns: `repeat(${rows.length}, 1fr)` }}>
           {rows.map(([label, m]) => (
             <div key={label} className="vitals-tile">
-              <div className="vitals-v" style={{ color: m.ok ? "var(--green, #16a34a)" : "#94a3b8" }}>{m.text}</div>
               <div className="vitals-k">{label}</div>
+              <div className="vitals-v" style={{ color: m.ok ? "var(--green)" : "var(--muted)" }}>{m.text}</div>
               {m.ok && m.experimental && <div className="vitals-disclaimer">{m.disclaimer || "Experimental — not validated"}</div>}
             </div>
           ))}
         </div>
+
+        {extras.length > 0 && (
+          <div className="vitals-grid vitals-grid-extra">
+            {extras.map((m) => (
+              <div key={m.label} className="vitals-tile">
+                <div className="vitals-k">{m.label}</div>
+                <div className="vitals-v" style={{ color: "var(--green)" }}>{m.text}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -73,7 +141,7 @@ const mdBold = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 const _show = (v) => v !== undefined && v !== null && v !== "" && v !== "N/A";
 
 // Format the backend analysis into a readable bot reply (always renders as text).
-function formatAnalysis(d, region) {
+function formatAnalysis(d) {
   if (!d) return "⚠️ Empty response from server.";
   const noFood = !_show(d.description) || /no food/i.test(String(d.description)) || !_show(d.calories);
   if (noFood) {
@@ -98,7 +166,6 @@ function formatAnalysis(d, region) {
   const micros = Object.entries(d.micronutrients || {}).filter(([, v]) => _show(v));
   if (micros.length) L.push(`\n**Micronutrients:** ${micros.map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join("  ·  ")}`);
   if (_show(d.recommendation)) L.push(`\n💡 ${d.recommendation}`);
-  if (region) L.push(`\n🔒 stored & analyzed in ${region.region}`);
   return L.join("\n");
 }
 
@@ -233,10 +300,9 @@ function LoginGate({ onSuccess }) {
   return (
     <div className="login-gate">
       <div className="logo big">🥗</div>
-      <h1>NutraSmart</h1>
-      <p>Your AI nutrition assistant. Sign in to scan meals and chat about your nutrition.</p>
+      <h1>W360</h1>
+      <p>Snap a meal, scan your vitals, and chat with an AI coach that remembers what you ate — sign in to get started.</p>
       <GoogleLogin onSuccess={onSuccess} onError={() => alert("Google sign-in failed")} />
-      <div className="gate-note">Your data stays in your region 🔒</div>
     </div>
   );
 }
@@ -260,7 +326,7 @@ export default function App() {
       if (Array.isArray(saved) && saved.length) return saved.map((m) => ({ ...m, id: uid() }));
     } catch {}
     return [
-      { id: uid(), role: "assistant", text: "Hey! 👋 I'm NutraSmart. Snap a photo of your meal or ask me anything about your nutrition." },
+      { id: uid(), role: "assistant", text: "Hey! 👋 I'm W360. Snap a photo of your meal or ask me anything about your nutrition." },
     ];
   });
   const [input, setInput] = useState("");
@@ -269,6 +335,10 @@ export default function App() {
   const [scanOpen, setScanOpen] = useState(false);
   const fileRef = useRef(null);
   const endRef = useRef(null);
+
+  // Most recent scan, derived from the thread rather than kept in its own state: messages
+  // already persist to sessionStorage, so the pinned strip survives a reload for free.
+  const latestVitals = [...messages].reverse().find((m) => m.type === "vitals")?.data;
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
 
@@ -336,7 +406,7 @@ export default function App() {
       await api.putToS3(url, file);
       // 3) regional agent analyzes it (real Bedrock) and returns nutrition
       const data = await api.analyze([{ key, content_type: file.type }]);
-      add({ role: "assistant", text: formatAnalysis(data, region) });
+      add({ role: "assistant", text: formatAnalysis(data) });
     } catch (e) {
       add({ role: "assistant", text: `⚠️ ${e.message}` });
     } finally { setBusy(false); }
@@ -344,7 +414,9 @@ export default function App() {
 
   function onSuggestion(s) {
     if (s.startsWith("📷")) { fileRef.current?.click(); return; }
-    if (s.startsWith("🫀")) { setScanOpen(true); return; }
+    // Routes to the Shen.AI scan page. (Was setScanOpen(true) for the in-house scan,
+    // which is still wired up below — see the note by the composer buttons.)
+    if (s.startsWith("🫀")) { window.location.href = "/scan.html"; return; }
     sendText(s.replace(/^\p{Emoji}\s*/u, ""));
   }
 
@@ -361,8 +433,8 @@ export default function App() {
         <div className="brand">
           <span className="logo">🥗</span>
           <div>
-            <div className="brand-name">NutraSmart</div>
-            <div className="brand-sub">Hi {user.firstName || user.email} · live backend</div>
+            <div className="brand-name">W360</div>
+            <div className="brand-sub">Hi {user.firstName || user.email}</div>
           </div>
         </div>
         <div className="top-actions">
@@ -370,6 +442,8 @@ export default function App() {
           <button className="dash-btn" onClick={logout}>Sign out</button>
         </div>
       </header>
+
+      {latestVitals && <VitalsStrip data={latestVitals} />}
 
       <main className="thread">
         {messages.map((m) => <MessageBoundary key={m.id}><Bubble m={m} /></MessageBoundary>)}
@@ -385,12 +459,14 @@ export default function App() {
 
       <form className="composer" onSubmit={(e) => { e.preventDefault(); sendText(input); }}>
         <button type="button" className="icon-btn" title="Attach photo" onClick={() => fileRef.current?.click()}>📷</button>
-        <button type="button" className="icon-btn" title="Scan vitals" onClick={() => setScanOpen(true)}>🫀</button>
-        <button type="button" className="icon-btn" title="Scan vitals (Shen.AI, on-device)"
+        {/* The in-house FaceScanModal path is fully wired and intact below, just with no
+            visible trigger — to bring it back, re-add:
+            <button className="icon-btn" title="Scan vitals" onClick={() => setScanOpen(true)}>🫀</button> */}
+        <button type="button" className="icon-btn" title="Scan vitals (on-device)"
           onClick={() => { window.location.href = "/scan.html"; }}>🩺</button>
         <input ref={fileRef} type="file" accept="image/*" hidden
           onChange={(e) => { const f = e.target.files?.[0]; if (f) sendImage(f); e.target.value = ""; }} />
-        <input className="text-input" placeholder="Message NutraSmart…" value={input}
+        <input className="text-input" placeholder="Message W360…" value={input}
           onChange={(e) => setInput(e.target.value)} disabled={busy} />
         <button className="send-btn" disabled={busy || !input.trim()}>↑</button>
       </form>

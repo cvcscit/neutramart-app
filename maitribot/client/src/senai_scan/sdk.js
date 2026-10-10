@@ -74,7 +74,7 @@ function assertBrowserCanRunSdk() {
 
   if (!hasSab) {
     throw new ShenaiInitError(
-      `This browser can't run the Shen.AI scan: SharedArrayBuffer is unavailable ` +
+      `This browser can't run the vitals scan: SharedArrayBuffer is unavailable ` +
         `(crossOriginIsolated=${isolated}). The SDK requires COOP/COEP isolation headers, ` +
         `which we can't set on this page without breaking Google login — see ` +
         `src/senai_scan/README.md. Try Chrome, or move the scan to its own isolated page.`
@@ -115,7 +115,7 @@ export async function initShenai(userId = "", settings = {}, onStage = () => {})
     // never fires, so without this the page would sit on "loading" forever.
     const timer = setTimeout(() => {
       reject(new ShenaiInitError(
-        `Shen.AI licence activation timed out after ${LICENCE_TIMEOUT_MS / 1000}s. ` +
+        `Scan engine licence activation timed out after ${LICENCE_TIMEOUT_MS / 1000}s. ` +
         `The SDK loaded fine, so this is the licence request — check your network, or ` +
         `whether the API key is valid for this origin.`
       ));
@@ -137,12 +137,12 @@ export async function initShenai(userId = "", settings = {}, onStage = () => {})
 
 function licenceErrorMessage(sdk, result) {
   if (result === sdk.InitializationResult.INVALID_API_KEY) {
-    return "Shen.AI rejected the API key. Check VITE_SHENAI_API_KEY.";
+    return "The scan engine rejected the API key. Check VITE_SHENAI_API_KEY.";
   }
   if (result === sdk.InitializationResult.CONNECTION_ERROR) {
-    return "Could not reach Shen.AI to activate the licence. Check your connection.";
+    return "Could not reach the licence server. Check your connection.";
   }
-  return "Shen.AI failed to initialize (internal error).";
+  return "The scan engine failed to initialize (internal error).";
 }
 
 /**

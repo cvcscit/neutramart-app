@@ -1,6 +1,11 @@
 node_modules
 dist
 
+# Env files hold API keys (Shen.AI, Google). The parent .gitignore only covers bare
+# ".env", so cover the mode-specific ones too.
+.env.*
+!.env.example
+
 # Copied from node_modules/@shenai/sdk by `npm run prepare:shenai` so Vite serves the
 # SDK's .wasm/worker files statically instead of trying to bundle them.
 public/shenai-sdk
