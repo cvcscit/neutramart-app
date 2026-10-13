@@ -326,7 +326,7 @@ export default function App() {
       if (Array.isArray(saved) && saved.length) return saved.map((m) => ({ ...m, id: uid() }));
     } catch {}
     return [
-      { id: uid(), role: "assistant", text: "Hey! 👋 I'm W360. Snap a photo of your meal or ask me anything about your nutrition." },
+      { id: uid(), role: "assistant", text: "Hey! 👋 I'm W360. Snap a photo of your meal, scan your vitals (heart rate, blood pressure, and more) right from your camera, or ask me anything about your nutrition." },
     ];
   });
   const [input, setInput] = useState("");
