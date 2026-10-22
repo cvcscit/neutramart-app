@@ -138,9 +138,6 @@ export default function DashboardPanel({ onClose }) {
           </section>
         )}
 
-        <section className="panel-section muted-note">
-          🔒 Live data from your region's bucket via the existing NutraSmart backend.
-        </section>
       </aside>
     </div>
   );
