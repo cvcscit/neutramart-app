@@ -3,7 +3,8 @@
 **Last updated:** 2026-10-27
 **Base:** branch `dev`. Phase 0 was committed in `46d590e` (on top of `26eecb6`), and line numbers in the *Where*
 column are at `46d590e`. The agent-copy sync and the root Node file deletion are in `bda9d6b`, the rule-text update
-in `5eff3ff`, the log fix in `8928e1d`; the newest entry in §2 (the edge deploy scripts) is uncommitted.
+in `5eff3ff`, the log fix in `8928e1d`, the edge deploy scripts in `c87fb21`; the newest entry in §2 (production
+stays in the old account) is uncommitted.
 **Tracks:** every finding in the refactoring review
 ([00-refactoring-review-summary.md](00-refactoring-review-summary.md) and its parts 01–04, 172 findings) through the
 five phases of its §5, plus findings made while implementing (`NEW-n`).
@@ -26,14 +27,16 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 
 - **Phase 0 is committed (`46d590e`) but not deployed.** The four AgentCore projects now carry the agent fixes too
   (synced in `bda9d6b`, §9 R1). Deploy the edge first, then the agents and the client (§9, R2–R4).
-- **The edge deploy scripts are rewritten (Phase 1, uncommitted):** one `backend/ecs/config.env`, a task definition
+- **Production stays in the old account `209479309679` (D9, 2026-10-27).** Every live name (`nutrasmart.in`,
+  `app.`, `api.`) is served from there; the September copy in `792207721590` serves nothing. `backend/ecs/config.env`
+  now targets the old account and its `sci-neutrasmart-project*` buckets (§2, R7, R8).
+- **The edge deploy scripts are rewritten (Phase 1, `c87fb21`):** one `backend/ecs/config.env`, a task definition
   with no literals, `deploy.sh` that registers a revision per commit and rolls back to the previous one, and a
-  read-only `deploy.sh --plan`. Nothing has run against AWS (§9 R3, R7).
-- **Tests:** edge 0 → 62 tests (`backend/tests/`); agent 60 → 73 passing, 2 opt-in skipped. Both services start and
+  read-only `deploy.sh --plan`. Nothing has changed in AWS (§9 R3, R7).
+- **Tests:** edge 0 → 63 tests (`backend/tests/`); agent 60 → 73 passing, 2 opt-in skipped. Both services start and
   answer their health checks locally; the client builds.
-- **Still open for the owner:** add `BUCKET_*` to the local `backend/.env` (R4); a profile for account
-  `792207721590`, then `deploy.sh --plan` before the first deploy (R3, R7); whether the S3 demo build is still used
-  (R7).
+- **Still open for the owner:** add `BUCKET_*` to the local `backend/.env` (R4); a yes for
+  `AWS_PROFILE=moxa-dev backend/ecs/deploy.sh --plan` (R7); how to redeploy the old account's agents (R8).
 
 ## 1. How to read this file
 
@@ -48,7 +51,34 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 
 ## 2. Progress log
 
-### 2026-10-27 — Edge deploy scripts: one config, a revision per commit, rollback (`INF-9`–`INF-20`); uncommitted
+### 2026-10-27 — Production stays in the old account `209479309679` (D9); uncommitted
+- **Found (read-only, 2026-10-27, profile `moxa-dev`, IAM user `mariom`):** the `nutrasmart.in` Route 53 zone the
+  domain's name servers use is in `209479309679`, and so are the CloudFront distributions for `nutrasmart.in`,
+  `app.nutrasmart.in` and `api.nutrasmart.in`. The API goes from there to ALB `nutrasmart-alb-800561718`, ECS
+  `nutrasmart-backend:8` (image `1ebc811`, registered 2026-08-15), the four `nutrasmart_agent` runtimes (last updated
+  2026-08-02) and buckets `sci-neutrasmart-project{,-us,-ca,-eu}`. The account is shared with another project.
+- **Decided (owner):** production stays there and `mariom` deploys it (D9). The September copy in `792207721590` is
+  not used.
+- **Changed:** `backend/ecs/config.env` targets `209479309679` and the old buckets; `ALLOWED_ORIGINS` adds
+  `https://app.nutrasmart.in`, which the live revision allows; `ORIGIN_VERIFY_EXEMPT_ORIGINS` is empty, because
+  CloudFront adds `X-Origin-Verify` in this account (read: header name only). `export_runtime_arns` in
+  `backend/ecs/lib.sh` now stops when a project's runtime is in another account: the AgentCore projects in the repo
+  deploy to `792207721590`. `setup-https.sh` warns that it would repoint the live names at the ALB. The four scripts'
+  usage lines name `EXPECTED_ACCOUNT_ID` instead of an account.
+- **New edge with the old agents (read from git, `1ebc811` vs `HEAD`):** the user id is derived the same way; meals,
+  scans, the summary and the profile were already under `users/{user_id}/`; the old agents read whatever upload key
+  they are handed, so the new `users/{user_id}/uploads/` keys work. The old agents handle only `chat`, `summary` and
+  `analyze`, so the new `/api/facescan/analyze` answers 502 until they are redeployed (R8). R2's order holds.
+- **Verified:** edge 63 passed (new: the runtime-ARN account check, both ways); `bash -n` on all five scripts; an
+  offline render shows the old account's image, roles, buckets and SSM ARNs. Nothing changed in AWS.
+- **Docs that now disagree (not edited):** `.claude/CLAUDE.md` (§2 names the `w360-nutrasmart-*` buckets; §1 says
+  the task definition sets `ORIGIN_VERIFY_EXEMPT_ORIGINS`), `.claude/skills/aws-infrastructure/SKILL.md` and its
+  `which-runtime-serves-canada` eval (expect `792207721590`), `documents/MIGRATION_OUTSTANDING_TASKS.md` §5 and
+  `backend/agent/README.md`.
+
+### 2026-10-27 — Edge deploy scripts: one config, a revision per commit, rollback (`INF-9`–`INF-20`); committed in `c87fb21`
+Written for account `792207721590` and the `w360-nutrasmart-*` buckets; the same day the target became the old
+account (entry above).
 - **One config (`INF-12`, `INF-18`):** `backend/ecs/config.env` holds every value the four scripts and the templates
   need (account, project, regions, the four `w360-nutrasmart-*` buckets, origins, domains). `backend/ecs/lib.sh`
   loads it for all four scripts. `task-definition.json` keeps only `<NAME>` placeholders, and
@@ -367,26 +397,32 @@ acceptable; don't generalize further).
 - **R6. Stale rule text: done 2026-10-26.** `.claude/CLAUDE.md` now names where each Phase 0 fix is enforced and
   keeps only the gaps that are still open (§2). Update it again when a phase closes more of them, and after the
   Phase 0 deploy remove its "until they are deployed" note.
-- **R7. First run of the new ECS scripts (2026-10-27).** Each step below changes AWS and needs the owner's yes.
-  - **Profile.** Every script needs `AWS_PROFILE` for account `792207721590`. On 2026-10-26 this machine had none.
-    `deploy.sh` needs nothing else. `setup-https.sh` and `teardown.sh` also need `backend/ecs/resources.env`, which
-    exists only on the machine that ran `setup.sh`.
-  - **Read the plan.** `AWS_PROFILE=<profile> backend/ecs/deploy.sh --plan` is read-only. Against the template as it
-    stood before this change, the plan would show: the image moves from `:latest` to the commit's tag;
+- **R7. First run of the new ECS scripts (2026-10-27; account changed to `209479309679` the same day, D9).** Each
+  step below changes AWS and needs the owner's yes.
+  - **Profile.** `moxa-dev` (IAM user `mariom` in `209479309679`). `deploy.sh` needs nothing else. Never run
+    `setup.sh` there (its guard sees the live VPC and stops), `teardown.sh` (it deletes the live edge) or
+    `setup-https.sh` (it would repoint `nutrasmart.in` and `api.nutrasmart.in` at the ALB, around CloudFront).
+  - **Read the plan.** `AWS_PROFILE=moxa-dev backend/ecs/deploy.sh --plan` is read-only. Expected from the live
+    revision `nutrasmart-backend:8` (read 2026-10-27): the image moves from `:1ebc811` to the commit's tag;
     `S3_BUCKET_NAME` and the `AGENT_RUNTIME_ARN` secret are removed; `ALLOWED_ORIGINS` loses the two localhost
-    origins. The live revision may differ from that template, which is why the plan comes first.
-  - **S3 demo build.** The template's `ALLOWED_ORIGINS` never included the demo origin. A browser on the demo is
-    blocked by CORS even when `ORIGIN_VERIFY_EXEMPT_ORIGINS` lets the request through. If the demo is still used, add
-    its origin to `ALLOWED_ORIGINS` in `backend/ecs/config.env` until CloudFront is restored. If it isn't, empty
-    `ORIGIN_VERIFY_EXEMPT_ORIGINS` (an empty value leaves the variable unset). **Owner's call; open.**
-  - **Task-role policy.** `deploy.sh` doesn't touch IAM. Read the live policy with
-    `aws iam get-role-policy --role-name nutrasmart-ecs-task-role --policy-name nutrasmart-s3-bedrock`. Then put the
-    rendered `task-role-policy.json`: source `lib.sh`, run `export_runtime_arns`, and pipe `render
-    task-role-policy.json` into `aws iam put-role-policy ... --policy-document file:///dev/stdin`. After that, the edge
-    can no longer reach anything outside `users/` (it doesn't today), and it can no longer call
-    `bedrock:InvokeModel`.
-  - **SSM.** The live `google-client-id` stays `SecureString` (`INF-20`), and the live `agent-runtime-arn` stays until
-    teardown. Nothing here overwrites a parameter.
+    origins. Buckets, roles, the log group and the other five secrets stay the same.
+  - **S3 demo build: resolved 2026-10-27.** The live revision sets no `ORIGIN_VERIFY_EXEMPT_ORIGINS`, and CloudFront
+    adds `X-Origin-Verify` in this account, so `config.env` leaves it empty.
+  - **Task-role policy: don't apply yet.** `deploy.sh` doesn't touch IAM. `documents/DATA_RESIDENCY.md` §4 says the
+    live role already grants S3 on the four buckets and `InvokeAgentRuntime` in the four regions (not read from AWS).
+    The rendered `task-role-policy.json` would need the old runtimes' ARNs, which live in that account's SSM, not in
+    the repo's `deployed-state.json` files; `export_runtime_arns` now refuses the repo's ARNs there. Read the live
+    policy with `aws iam get-role-policy --role-name nutrasmart-ecs-task-role --policy-name nutrasmart-s3-bedrock`
+    before changing it.
+  - **SSM.** All six parameters the task definition reads exist in `209479309679` (names and types read 2026-10-27),
+    so nothing needs creating. `google-client-id` stays `SecureString` (`INF-20`); `agent-runtime-arn` stays until
+    teardown.
+- **R8. The old account's agents (2026-10-27).** The four `nutrasmart_agent` runtimes in `209479309679` run a
+  container (`nutrasmart-agent:latest` in that account's ECR; read for `us-east-1`), last updated 2026-08-02, with
+  role `nutrasmart-agent-runtime-role`. They were built from `backend/agent/Dockerfile` and created by hand; no script
+  in the repo deploys them. The repo's AgentCore CLI projects (R1) deploy to `792207721590` and don't apply. Until
+  they are rebuilt from `backend/agent/app/nutrasmart_agent/` and updated region by region, they lack the Phase 0
+  agent fixes and `face_scan`. Deploy order stays R2: edge first. **How to redeploy them: open.**
 
 ## 10. Decisions needed (from the summary's §6)
 
@@ -411,11 +447,17 @@ acceptable; don't generalize further).
     either may point outside the project directory is not stated there.
 - **D8. `mediapipe==0.10.14` + `numpy==2.0.2` on arm64 / Python 3.12** (`AGT-39`). **Answer:** _open_; works on
   x86_64 / Python 3.12 (FaceMesh pass, 2026-10-26).
+- **D9. Which AWS account runs production** (new, 2026-10-27). `documents/MIGRATION_OUTSTANDING_TASKS.md` §5 had
+  the old account `209479309679` left untouched and the September copy in `792207721590` taking over, but the cutover
+  never happened. **Answer:** 2026-10-27, owner: production stays in `209479309679` and `mariom` deploys it. The
+  trade-off: that account is shared with another project. Consequences: R7, R8, and the docs listed in §2.
 
 ## What wasn't verified
 
-- Nothing ran against AWS or Google: no deploy, no bucket listing, no real token. The live task-definition
-  contents (R3) and the number of legacy `{email}/` uploads (`NEW-2`) are unknown.
+- Nothing changed in AWS or Google: no deploy, no bucket listing, no real token. On 2026-10-27 the old account was
+  read under `moxa-dev` (`describe-*`, `get-*`, `list-*` only, no decryption): Route 53, CloudFront, the ALBs, the
+  live task definition, SSM names and types, bucket regions and the agent runtimes. The number of legacy `{email}/`
+  uploads (`NEW-2`) is unknown.
 - The client was built, not run in a browser; there are no client tests (`WEB-24`).
 - The BP and SpO2 bundles' target names are assumed to be `sbp`/`dbp` and `spo2` (what the client reads); the
   trained bundles in the model bucket were not opened.

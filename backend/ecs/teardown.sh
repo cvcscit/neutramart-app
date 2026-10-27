@@ -10,7 +10,7 @@ set -euo pipefail
 #          the agent runtimes, the ACM certificate and the Route 53 records from setup-https.sh.
 #
 # Usage, from any directory:
-#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/teardown.sh
+#   AWS_PROFILE=<profile for EXPECTED_ACCOUNT_ID> backend/ecs/teardown.sh
 # ══════════════════════════════════════════════════════════════
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

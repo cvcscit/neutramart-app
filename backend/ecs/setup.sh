@@ -16,7 +16,7 @@ set -euo pipefail
 #   - The four agent runtimes deployed, so their deployed-state.json files hold the runtime ARNs
 #
 # Usage, from any directory:
-#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/setup.sh
+#   AWS_PROFILE=<profile for EXPECTED_ACCOUNT_ID> backend/ecs/setup.sh
 # ══════════════════════════════════════════════════════════════
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"

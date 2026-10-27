@@ -10,8 +10,8 @@ set -euo pipefail
 # ran before. Every revision stays registered, so any earlier one can be redeployed by hand.
 #
 # Usage, from any directory:
-#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/deploy.sh --plan   # read-only diff
-#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/deploy.sh          # build and deploy
+#   AWS_PROFILE=<profile for EXPECTED_ACCOUNT_ID> backend/ecs/deploy.sh --plan   # read-only diff
+#   AWS_PROFILE=<profile for EXPECTED_ACCOUNT_ID> backend/ecs/deploy.sh          # build and deploy
 #
 # The image is built from the working tree. Uncommitted changes to the build inputs below stop the
 # deploy unless ALLOW_DIRTY=1, which tags the image <commit>-dirty-<UTC time> so it never passes for

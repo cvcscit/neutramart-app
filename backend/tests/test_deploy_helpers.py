@@ -43,11 +43,10 @@ def test_task_definition_renders_from_config_env_alone() -> None:
     assert task_definition["taskRoleArn"] == f"arn:aws:iam::{ACCOUNT}:role/nutrasmart-ecs-task-role"
 
 
-def test_production_values_have_no_local_or_legacy_origins_or_buckets() -> None:
+def test_production_values_have_no_local_origins_or_dead_keys() -> None:
     environment = _environment(_rendered("task-definition.json"))
 
     assert environment["ALLOWED_ORIGINS"] and "localhost" not in environment["ALLOWED_ORIGINS"]
-    assert all("sci-neutrasmart" not in value for value in environment.values())
     assert {"S3_BUCKET_NAME", "AGENT_RUNTIME_ARN"}.isdisjoint(environment)
     assert all(environment[f"BUCKET_{code}"] for code in DATA_REGION_CODES)
 
@@ -106,6 +105,20 @@ def test_runtime_arns_come_from_each_regions_agentcore_project() -> None:
 
     for code, region in regions.items():
         assert deploy_helpers.runtime_arn(REPO_ROOT, code).startswith(f"arn:aws:bedrock-agentcore:{region}:")
+
+
+def test_lib_sh_exports_runtime_arns_only_for_the_account_they_are_in() -> None:
+    projects_account = deploy_helpers.runtime_arn(REPO_ROOT, "us").split(":")[4]
+    script = f'source "{ECS_DIR}/lib.sh" && export_runtime_arns && echo "$AGENT_ARN_EU"'
+
+    def run(account: str) -> subprocess.CompletedProcess[str]:
+        env = {"PATH": os.environ["PATH"], "AWS_ACCOUNT_ID": account}
+        return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, timeout=30, check=False)
+
+    same, other = run(projects_account), run(ACCOUNT)
+
+    assert same.returncode == 0 and same.stdout.strip() == deploy_helpers.runtime_arn(REPO_ROOT, "eu")
+    assert other.returncode == 1 and f"not in account {ACCOUNT}" in other.stderr
 
 
 def test_a_region_without_deployed_state_is_refused(tmp_path: Path) -> None:

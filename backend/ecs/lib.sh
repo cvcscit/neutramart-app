@@ -51,11 +51,14 @@ render() {
     python3 "$HELPERS" render "$ECS_DIR/$1"
 }
 
-# Export AGENT_ARN_US/IN/CA/EU from the AgentCore projects' deployed-state.json files.
+# Export AGENT_ARN_US/IN/CA/EU from the AgentCore projects' deployed-state.json files. Stop when a
+# runtime is in another account than AWS_ACCOUNT_ID: those projects may deploy elsewhere than config.env.
 export_runtime_arns() {
     local code arn
     for code in us in ca eu; do
         arn=$(python3 "$HELPERS" runtime-arn "$code")
+        [[ "$arn" == *":${AWS_ACCOUNT_ID:?run require_aws_identity first}:runtime/"* ]] \
+            || die "The $code AgentCore project's runtime is not in account $AWS_ACCOUNT_ID: $arn"
         export "AGENT_ARN_$(echo "$code" | tr '[:lower:]' '[:upper:]')=$arn"
     done
 }

@@ -7,7 +7,10 @@ set -euo pipefail
 # Prerequisites:
 #   - setup.sh has been run (resources.env exists)
 #   - DOMAIN (config.env) is registered and its hosted zone is in this account's Route 53
-#     (on 2026-10-26 the nutrasmart.in zone was still in the previous account)
+#
+# Not for the production account as it stands: there nutrasmart.in, app.nutrasmart.in and
+# api.nutrasmart.in already point at CloudFront (2026-10-27), and step 6 would repoint the first and
+# the last at the ALB, around CloudFront and its X-Origin-Verify header.
 #
 # What this script does:
 #   1. Requests an ACM certificate for DOMAIN + *.DOMAIN
@@ -19,7 +22,7 @@ set -euo pipefail
 #   7. Opens port 443 on ALB security group
 #
 # Usage, from any directory:
-#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/setup-https.sh
+#   AWS_PROFILE=<profile for EXPECTED_ACCOUNT_ID> backend/ecs/setup-https.sh
 # ══════════════════════════════════════════════════════════════
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
