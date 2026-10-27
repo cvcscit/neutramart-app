@@ -64,7 +64,7 @@ def test_duplicate_labels_are_listed_once(settings):
 
 
 def test_one_uncertain_image_falls_back_to_vision(settings):
-    classifier = ScriptedClassifier([("butter_chicken", 0.91), ("garlic_naan", 0.59)])
+    classifier = ScriptedClassifier([("butter_chicken", 0.91), ("garlic_naan", 0.69)])
     result, bedrock = _run(2, classifier, settings)
 
     assert result["recognition"]["source"] == "llm"
@@ -75,8 +75,10 @@ def test_one_uncertain_image_falls_back_to_vision(settings):
 
 
 def test_threshold_is_inclusive(settings):
-    result, _ = _run(1, ScriptedClassifier([("dhokla", 0.6)]), settings)
+    result, _ = _run(1, ScriptedClassifier([("dhokla", 0.7)]), settings)
     assert result["recognition"]["source"] == "classifier"
+    assert result["recognition"]["is_food"] is True
+    assert result["is_food"] is True
 
 
 def test_classifier_error_falls_back_to_vision(settings):
@@ -84,7 +86,8 @@ def test_classifier_error_falls_back_to_vision(settings):
     assert result["recognition"] == {
         "source": "llm",
         "order": "classifier_first",
-        "threshold": 0.6,
+        "is_food": True,
+        "threshold": 0.7,
         "llm_threshold": 0.6,
         "llm_confidence": 0.9,
         "fallback_used": True,
@@ -129,34 +132,47 @@ def test_confident_classifier_reports_its_score_as_confidence(settings):
     assert result["recognition"]["fallback_used"] is False
 
 
-# --- classifier first, both below threshold: higher score wins ---
+# --- classifier first, below threshold: the vision LLM decides ---
 
 
-def test_classifier_first_weak_llm_loses_to_higher_classifier(settings):
+def test_classifier_first_below_threshold_uses_llm_even_if_less_confident(settings):
     bedrock = FakeBedrock([_llm_reply(0.3), LABELS_REPLY])
-    result, bedrock = _run(1, ScriptedClassifier([("dhokla", 0.5)]), settings, bedrock)
-
-    assert result["recognition"]["source"] == "classifier"
-    assert result["description"] == "Labelled meal"
-    assert result["recognition"]["fallback_used"] is False
-    assert len(bedrock.calls) == 2
-    assert _has_image_block(bedrock.calls[0]["messages"][0]["content"])
-    assert not _has_image_block(bedrock.last_content)
-
-
-def test_classifier_first_weak_llm_beats_lower_classifier(settings):
-    bedrock = FakeBedrock(_llm_reply(0.55))
-    result, bedrock = _run(1, ScriptedClassifier([("dhokla", 0.5)]), settings, bedrock)
+    result, bedrock = _run(1, ScriptedClassifier([("dhokla", 0.69)]), settings, bedrock)
 
     assert result["recognition"]["source"] == "llm"
+    assert result["description"] == "Vision meal"
     assert result["recognition"]["fallback_used"] is True
+    assert result["recognition"]["is_food"] is True
+    assert result["confidence"] == 0.3
     assert len(bedrock.calls) == 1
 
 
-def test_classifier_first_tie_keeps_classifier(settings):
-    bedrock = FakeBedrock([_llm_reply(0.5), LABELS_REPLY])
-    result, _ = _run(1, ScriptedClassifier([("dhokla", 0.5)]), settings, bedrock)
-    assert result["recognition"]["source"] == "classifier"
+@pytest.mark.parametrize("vision_reply", [
+    {"is_food": False, "description": "A bar chart", "calories": "120 kcal", "confidence": 0.9,
+     "dishes": [{"name": "Chart"}], "recommendation": "This looks like a chart, not food."},
+    {"is_food": "false", "description": "A cat", "calories": "50 kcal"},
+    {"description": "No food detected", "confidence": 0.95},
+    "Sorry, I can't tell.",
+])
+def test_classifier_first_llm_no_food_is_final(settings, vision_reply):
+    bedrock = FakeBedrock([vision_reply, LABELS_REPLY])
+    result, bedrock = _run(1, ScriptedClassifier([("thai_golden_egg_yolk_threads", 0.12)]), settings, bedrock)
+
+    assert result["recognition"]["source"] == "llm"
+    assert result["recognition"]["is_food"] is False
+    assert result["is_food"] is False
+    assert result["description"] == "No food detected"
+    assert result["calories"] == "N/A"
+    assert result["dishes"] == []
+    assert result["micronutrients"]["iron"] == "N/A"
+    assert result["confidence"] == 0.0
+    assert len(bedrock.calls) == 1  # no labels call for the classifier's guess
+
+
+def test_no_food_keeps_llm_recommendation(settings):
+    reply = {"is_food": False, "recommendation": "This looks like a chart, not food."}
+    result, _ = _run(1, ScriptedClassifier([("dhokla", 0.2)]), settings, FakeBedrock(reply))
+    assert result["recommendation"] == "This looks like a chart, not food."
 
 
 # --- LLM first ---
@@ -197,12 +213,17 @@ def test_llm_first_weak_llm_falls_back_to_confident_classifier(llm_first):
 @pytest.mark.parametrize("vision_reply", [
     "Sorry, I can't tell.",
     {"description": "No food detected", "confidence": 0.95},
+    {"is_food": False, "description": "A selfie"},
 ])
-def test_llm_first_no_food_or_prose_falls_back_to_classifier(llm_first, vision_reply):
-    bedrock = FakeBedrock([vision_reply, LABELS_REPLY])
-    result, _ = _run(1, ScriptedClassifier([("dhokla", 0.3)]), llm_first, bedrock)
-    assert result["recognition"]["source"] == "classifier"
+def test_llm_first_no_food_skips_classifier(llm_first, vision_reply):
+    classifier = ScriptedClassifier([("dhokla", 0.99)])
+    result, bedrock = _run(1, classifier, llm_first, FakeBedrock([vision_reply, LABELS_REPLY]))
+    assert result["recognition"]["source"] == "llm"
+    assert result["recognition"]["is_food"] is False
     assert result["recognition"]["llm_confidence"] == 0.0
+    assert result["description"] == "No food detected"
+    assert classifier.calls == 0
+    assert len(bedrock.calls) == 1
 
 
 @pytest.mark.parametrize("confidence", [None, "high", "nan"])

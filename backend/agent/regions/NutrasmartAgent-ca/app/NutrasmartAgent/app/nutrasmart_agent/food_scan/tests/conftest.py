@@ -80,4 +80,4 @@ class ScriptedClassifier:
 
 @pytest.fixture
 def settings():
-    return load_settings({"S3_BUCKET_NAME": BUCKET, "FOOD_CLASSIFIER_THRESHOLD": "0.6"})
+    return load_settings({"S3_BUCKET_NAME": BUCKET, "FOOD_CLASSIFIER_THRESHOLD": "0.7"})

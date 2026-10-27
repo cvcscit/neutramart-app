@@ -121,7 +121,7 @@ def _parse_models(raw: str) -> tuple[ClassifierModel, ...]:
 
 
 def _load_classifier_settings(env: Mapping[str, str]) -> ClassifierSettings:
-    threshold = _get_unit_float(env, "FOOD_CLASSIFIER_THRESHOLD", 0.60)
+    threshold = _get_unit_float(env, "FOOD_CLASSIFIER_THRESHOLD", 0.70)
     device = env.get("FOOD_CLASSIFIER_DEVICE", "cpu").strip().lower()
     if device not in CLASSIFIER_DEVICES:
         raise ValueError(f"FOOD_CLASSIFIER_DEVICE must be one of {CLASSIFIER_DEVICES}, got {device!r}")

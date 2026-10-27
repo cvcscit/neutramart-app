@@ -52,10 +52,14 @@ ANALYZE_PROMPT = (
     + _ANALYSIS_JSON_SCHEMA
     + "IMPORTANT: Identify EACH separate dish/food item in the image and list them individually in the dishes array "
     "with per-dish nutrition. The top-level calories/protein/carbs/fat/fiber/sugar should be the TOTAL across all dishes.\n"
-    "If the image does not contain food, set description to 'No food detected' "
-    "and set all nutritional values to 'N/A'.\n"
+    "First decide whether the image shows food or drink meant to be eaten. Include a "
+    'top-level boolean "is_food" key with that verdict. Set it to false for anything that is '
+    "not food, e.g. a screenshot, chart, document, person, pet, landscape or an empty plate.\n"
+    "If is_food is false, set description to 'No food detected', set every nutritional value "
+    "to 'N/A', set dishes to an empty list, and use recommendation for one short line saying "
+    "the photo does not seem to show food.\n"
     'Also include a top-level "confidence" key: a number from 0 to 1 for how sure you are '
-    "that you identified the food correctly (0 if no food is detected)."
+    "that you identified the food correctly (0 if is_food is false)."
 )
 
 
