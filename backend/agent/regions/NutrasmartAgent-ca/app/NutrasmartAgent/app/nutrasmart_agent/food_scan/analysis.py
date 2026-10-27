@@ -142,11 +142,12 @@ def load_images(refs: list[ImageRef], s3, settings: AgentSettings) -> list[Image
         raise ValueError(f"Maximum {settings.max_images_per_request} images per request.")
 
     images = []
-    for ref in refs:
+    for position, ref in enumerate(refs, start=1):
         head = s3.head_object(Bucket=settings.s3_bucket_name, Key=ref.key)
         if head["ContentLength"] > settings.max_image_size_bytes:
             max_mb = settings.max_image_size_bytes // (1024 * 1024)
-            raise ValueError(f"Image {ref.key} is too large (max {max_mb}MB)")
+            # The position, not the key: the key holds the user id and the message reaches both logs.
+            raise ValueError(f"Image {position} of {len(refs)} is too large (max {max_mb}MB)")
         raw_bytes = s3.get_object(Bucket=settings.s3_bucket_name, Key=ref.key)["Body"].read()
         images.append(decode_image(raw_bytes))
     return images
@@ -214,8 +215,9 @@ def _parse_or_graceful(text: str, stop_reason: str | None) -> dict:
         # Model replied in prose with no JSON (blurry/ambiguous/non-food image, or a
         # refusal). Degrade gracefully to a valid 200 result instead of a 502 so the
         # UI shows a friendly "couldn't read this photo" card.
-        logger.warning("No JSON from model (stopReason=%s); returning graceful result. head=%r",
-                       stop_reason, (text or "")[:160])
+        # Its length, not its text: the reply describes the user's photo.
+        logger.warning("No JSON from model (stopReason=%s, %d characters); returning graceful result.",
+                       stop_reason, len(text or ""))
         return {
             "description": NO_FOOD_DESCRIPTION,
             "recommendation": "I couldn't read this photo clearly — try a well-lit shot with the food filling the frame.",

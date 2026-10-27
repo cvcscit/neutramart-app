@@ -2,10 +2,12 @@
 
 ``get_current_user`` verifies the bearer token on every request (no server session, no
 cached verification result) and returns the verified identity. ``user_id_from_email`` is the
-one place the storage id under ``users/{user_id}/`` is derived from that identity.
+one place the storage id under ``users/{user_id}/`` is derived from that identity, and
+``user_log_id`` the one stand-in for it that may appear in a log line.
 """
 
 import functools
+import hashlib
 import logging
 
 from fastapi import Depends, HTTPException
@@ -26,6 +28,14 @@ _INVALID_TOKEN = "Invalid or expired token"
 def user_id_from_email(email: str) -> str:
     """Storage id for a verified e-mail: ``@`` becomes ``_at_`` and ``.`` becomes ``_``."""
     return email.replace("@", "_at_").replace(".", "_")
+
+
+def user_log_id(user_id: str) -> str:
+    """Short, stable stand-in for ``user_id`` in log lines: the first 12 hex characters of its SHA-256.
+
+    The agent's ``_log_id`` computes the same value, so edge and agent lines for one user correlate.
+    """
+    return hashlib.sha256(user_id.encode()).hexdigest()[:12]
 
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:

@@ -44,6 +44,20 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 
 ## 2. Progress log
 
+### 2026-10-26 — No identity, keys or reply text in edge or agent logs (`NEW-5`); uncommitted
+- **Done:** the edge names a user in logs only by `user_log_id` (`backend/app/auth.py`), the same 12-character
+  SHA-256 prefix as the agent's `_log_id`, so lines correlate. `backend/app/routes/meals.py` no longer logs the user
+  id or object keys (a meal key also holds the user-typed meal name); `backend/app/agent_client.py` logs a malformed
+  reply's size, not its text. The audit for the fix found two agent leaks of the same kind, also fixed: the
+  oversize-image error named the object key (it reached both logs through `str(e)`), and the no-JSON warning logged
+  160 characters of the model's description of the photo
+  (`backend/agent/app/nutrasmart_agent/food_scan/analysis.py`). Copied to the four AgentCore projects; all five
+  trees identical.
+- **Verified:** edge 50 passed (6 new in `backend/tests/test_log_privacy.py`); agent 73 passed, 2 skipped (2 new in
+  `food_scan/tests/test_log_privacy.py`). Each new test leaks the identifier through the path it covers and asserts
+  it is absent from the log or the error text.
+- **Docs:** the audit-trail rule in `.claude/CLAUDE.md` §4 now states the rule and names the two hash helpers.
+
 ### 2026-10-26 — `.claude/CLAUDE.md` matches Phase 0 (R6, `NEW-3`, `NEW-5`); uncommitted
 - **Done:** rewrote the rule text that still described `API-43`, `API-45`, `API-47`, `AGT-44`, `WEB-19`, `WEB-26`
   and `WEB-27` as open: each now names where the rule is enforced. Kept the gaps that are still open (`AGT-30`,
@@ -198,7 +212,7 @@ project) and on a cutover plan: moving to named targets creates new runtimes wit
 | `WEB-17` | Med | JSDoc typedefs and `// @ts-check` | to do |
 | `WEB-18` † | Low | Client payloads match the backend contract | partial: `email` dropped from presign; `content_type` to `/facescan/analyze` left |
 | `NEW-2` | Med | Legacy `{email}/` uploads covered by erasure, or moved under `users/{user_id}/uploads/` (§8) | to do |
-| `NEW-5` | Med | No user ids, object keys or reply bodies in edge logs (§8) | to do |
+| `NEW-5` | Med | No user ids, object keys or reply bodies in edge logs (§8) | done (2026-10-26) |
 
 ## 6. Phase 3 — god modules, test gap and docs
 
@@ -289,7 +303,7 @@ acceptable; don't generalize further).
 | `NEW-1` | Med | `mediapipe==0.10.14` depends on `opencv-contrib-python`, so the agent image installs it **and** the pinned `opencv-python-headless` (both 5.0.0.93 here): two distributions of the same `cv2` module. It also pulls in `jax`, `jaxlib`, `matplotlib` and `sounddevice`. Read with `uv pip show mediapipe` in `backend/agent/venv_agent`, 2026-10-26. Decide which `cv2` build the image keeps and measure the image size. | 1 |
 | `NEW-2` | Med | Uploads made before this change sit at `{email}/{uuid}.{ext}` at the bucket root, outside `users/{user_id}/`, keyed by the plain e-mail. They are food photos and face videos. The erasure job (`.claude/CLAUDE.md` §4) must cover that layout, or a one-off move brings them under `users/{user_id}/uploads/`. How many exist was not checked (needs a read-only listing of the four buckets). | 2 |
 | `NEW-3` | Low | ~~The tenant layout in `.claude/CLAUDE.md` §4 lists `scans/`, `vitals_scans/`, `weekly_summary.txt` and `health_profile.json`, but not `users/{user_id}/meals/` (`backend/app/routes/meals.py:85`) or the new `users/{user_id}/uploads/`.~~ Done 2026-10-26: both prefixes added. | — |
-| `NEW-5` | Med | The edge still logs identity and payload: `backend/app/routes/meals.py:106`, `:159`, `:171` and `:384` put the full `user_id` or a `users/` object key in the message, and `backend/app/agent_client.py:132` logs up to 500 characters of a non-JSON agent reply, which can hold analysis content. `.claude/CLAUDE.md` §4 forbids both. Found 2026-10-26 while checking the audit-trail rule. | 2 |
+| `NEW-5` | Med | ~~The edge still logs identity and payload: `backend/app/routes/meals.py:106`, `:159`, `:171` and `:384` put the full `user_id` or a `users/` object key in the message, and `backend/app/agent_client.py:132` logs up to 500 characters of a non-JSON agent reply, which can hold analysis content. `.claude/CLAUDE.md` §4 forbids both. Found 2026-10-26 while checking the audit-trail rule.~~ Done 2026-10-26, together with two agent leaks of the same kind in `food_scan/analysis.py` (§2). | 2 |
 | `NEW-4` | Info | At `26eecb6` food_scan has 60 tests plus 2 opt-in skips, not the 50 the review counted, and `backend/agent/venv_agent` (uv, Python 3.12) replaces the broken `.venv` the review could not run. | — |
 
 ## 9. Rollout notes: what has to happen before Phase 0 is live

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.auth import get_current_user, user_id_from_email
+from app.auth import get_current_user, user_id_from_email, user_log_id
 from app.regions import get_data_context
 from app.limiter import limiter
 
@@ -103,7 +103,7 @@ def save_meal(
             ContentType="application/json",
         )
     except Exception as e:
-        logger.error(f"Failed to save meal for {uid}: {e}")
+        logger.error("Failed to save a meal for user %s: %s", user_log_id(uid), e)
         raise HTTPException(status_code=500, detail="Failed to save meal.")
 
     return {
@@ -156,7 +156,7 @@ def _load_s3_jsons(uid: str, folder: str, s3, bucket: str) -> list[dict]:
     try:
         response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
     except Exception as e:
-        logger.error(f"Failed to list {folder} for {uid}: {e}")
+        logger.error("Failed to list %s for user %s: %s", folder, user_log_id(uid), e)
         return []
 
     if "Contents" not in response:
@@ -168,7 +168,8 @@ def _load_s3_jsons(uid: str, folder: str, s3, bucket: str) -> list[dict]:
             data = s3.get_object(Bucket=bucket, Key=obj["Key"])
             items.append(json.loads(data["Body"].read()))
         except Exception as e:
-            logger.warning(f"Skipping unreadable {obj['Key']}: {e}")
+            # Not the key: it holds the user id and, for meals, the user-typed meal name.
+            logger.warning("Skipping an unreadable %s record for user %s: %s", folder, user_log_id(uid), e)
     return items
 
 
@@ -381,7 +382,7 @@ def delete_meal(
     try:
         ctx["s3"].delete_object(Bucket=ctx["bucket"], Key=meal_key)
     except Exception as e:
-        logger.error(f"Failed to delete meal {meal_key}: {e}")
+        logger.error("Failed to delete a meal for user %s: %s", user_log_id(uid), e)
         raise HTTPException(status_code=500, detail="Failed to delete meal.")
 
     return {"message": "Meal deleted successfully."}

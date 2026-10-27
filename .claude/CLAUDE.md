@@ -85,9 +85,9 @@ S3 bucket and Bedrock. There is no database and no ORM: all user data is JSON an
 - **Audit trail.** Target: CloudTrail data events on the four buckets, retained outside the application's control;
   nothing in the repo configures this yet. Until then every read or write under `users/` logs one structured line
   with the action, region, timestamp and a truncated user id, never the payload. The edge log group keeps 30 days
-  (`setup.sh`). Don't log e-mails or full user ids in clear; the agent logs a 12-character hash (`_log_id` in
-  `main.py`). Still open: `backend/app/routes/meals.py` logs full user ids and object keys, and `agent_client.py`
-  logs up to 500 characters of a malformed agent reply (`NEW-5`).
+  (`setup.sh`). Never log e-mails, full user ids, object keys under `users/` (they hold the user id, and meal keys
+  the user-typed meal name) or model and agent reply text. Name the user by the 12-character hash both sides
+  compute: `user_log_id` in `backend/app/auth.py`, `_log_id` in the agent's `main.py`.
 - **Right to be forgotten.** Erasure means deleting the whole `users/{user_id}/` prefix and any uploads still at
   `{email}/` in their regional bucket, their client-side `localStorage` and `sessionStorage` entries, and any log line
   carrying their id, in one automated job. No such job exists; `DELETE /api/meals/{meal_id}` removes one record.

@@ -129,7 +129,8 @@ def _parse_result(raw: str) -> dict:
     try:
         result = json.loads(raw)
     except json.JSONDecodeError as e:
-        logger.error("Agent returned non-JSON: %s", raw[:500])
+        # The body may be analysis or chat content about the user: log its size, not its text.
+        logger.error("Agent returned non-JSON (%d characters)", len(raw))
         raise AgentError("Malformed response from agent runtime.") from e
 
     if isinstance(result, dict) and result.get("error"):
