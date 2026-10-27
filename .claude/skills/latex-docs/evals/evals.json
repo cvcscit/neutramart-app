@@ -1,0 +1,23 @@
+{
+  "skill_name": "latex-docs",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Make a tex diagram of our ingestion pipeline and put it in docs/. Raw events come from Kafka and a nightly S3 dump; both go into a Validator, then a Deduplicator, then an Enricher that also reads a customer lookup table, then a Loader that writes to the warehouse. The Validator produces a rejected-records list that the Loader writes to a quarantine table, and the Enricher produces enriched rows that the Loader consumes. Final outputs are the warehouse table and a data-quality report. Put all the inputs at the top and the outputs at the bottom.",
+      "expected_output": "docs/ingestion-pipeline.tex (standalone TikZ) + its compiled PDF, inputs banded at top, outputs banded at bottom, no build residue in docs/.",
+      "files": ["fixtures/diagram-from-description"]
+    },
+    {
+      "id": 2,
+      "prompt": "Write a short technical note in LaTeX explaining how our rate limiter in src/ratelimit/bucket.py works (the algorithm, thread safety, the per-key limiter and its eviction, and any limitations you see). Put the tex and the pdf in docs/.",
+      "expected_output": "docs/<name>.tex article grounded in bucket.py with abstract, sections, a table and a limitations section, plus compiled PDF; no build residue.",
+      "files": ["fixtures/doc-from-code"]
+    },
+    {
+      "id": 3,
+      "prompt": "Make a second version of docs/architecture/architecture-diagram_v01.tex. Put a ranker R between TL and PO. It takes the risk from TL (instead of PO taking it) and outputs another risk parameter that goes into PO.",
+      "expected_output": "docs/architecture/architecture-diagram_v02.tex + .pdf with R on the main row between TL and PO, risk routed TL->R, new risk' R->PO; v01 files unchanged; no build residue.",
+      "files": ["fixtures/version-diagram"]
+    }
+  ]
+}

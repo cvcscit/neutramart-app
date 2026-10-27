@@ -1,0 +1,7 @@
+---
+type: llm
+focus: trace
+weight: 1
+---
+
+The result matches this description: The answer, grounded in the repo and at most read-only AWS calls (each named with its region and said to be read-only): CA maps to ca-central-1 in backend/app/config.py COUNTRY_REGION; the runtime is the one defined in backend/agent/regions/NutrasmartAgent-ca/agentcore/agentcore.json with BEDROCK_MODEL_ID ca.amazon.nova-lite-v1:0 (no Anthropic model has a Canada-resident profile) and S3_BUCKET_NAME w360-nutrasmart-ca; it is a CDK-managed CloudFormation stack named AgentCore-NutrasmartAgent-default in ca-central-1 (same stack name as the other three regions); the edge reads its ARN from SSM /nutrasmart/agent-arn-ca in ap-south-1 as AGENT_ARN_CA into REGION_AGENT_ARNS. Nothing is changed in AWS and no secret value is read.

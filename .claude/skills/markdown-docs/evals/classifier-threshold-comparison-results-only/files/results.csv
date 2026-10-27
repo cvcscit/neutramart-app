@@ -1,0 +1,10 @@
+model,threshold,images,classifier_decided,accuracy_when_decided,fell_back_to_llm
+chinese,0.60,400,352,0.912,48
+chinese,0.70,400,318,0.943,82
+chinese,0.80,400,261,0.966,139
+indian,0.60,400,371,0.889,29
+indian,0.70,400,334,0.925,66
+indian,0.80,400,280,0.957,120
+thai,0.60,400,339,0.902,61
+thai,0.70,400,297,0.939,103
+thai,0.80,400,236,0.962,164

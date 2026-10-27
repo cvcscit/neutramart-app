@@ -1,0 +1,102 @@
+% =====================================================================
+%  <Document title>
+%
+%  <What this document describes, which code/branch/commit it is grounded
+%  in, and the date it reflects (YYYY-MM-DD). Name the source files.>
+%
+%  Build:  pdflatex <file>.tex   (run twice)
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage[expansion=false]{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,calc,fit,backgrounds}
+\usepackage[most]{tcolorbox}
+\usepackage{caption}
+\usepackage{placeins}
+\PassOptionsToPackage{obeyspaces}{url}
+\usepackage{xurl}
+\usepackage[colorlinks=true,linkcolor=qteal,citecolor=qteal,urlcolor=qteal]{hyperref}
+
+% ---------------------------------------------------------------------
+%  Colours
+% ---------------------------------------------------------------------
+\definecolor{qnavy}{HTML}{1B2A41}
+\definecolor{qteal}{HTML}{0F7C8C}
+\definecolor{qorange}{HTML}{D9731A}
+\definecolor{qlight}{HTML}{EAF3F4}
+\definecolor{qgray}{HTML}{5B6573}
+
+% Key facts / invariants, and caveats / known problems.
+\newtcolorbox{keybox}[1]{colback=qlight, colframe=qteal, fonttitle=\bfseries,
+  title={#1}, boxrule=0.6pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt}
+\newtcolorbox{warnbox}[1]{colback=qorange!8, colframe=qorange, fonttitle=\bfseries,
+  title={#1}, boxrule=0.6pt, arc=2pt, left=6pt, right=6pt, top=4pt, bottom=4pt}
+
+% ---------------------------------------------------------------------
+%  Macros
+% ---------------------------------------------------------------------
+% \code{} and \file{} take raw identifiers/paths: underscores need no escaping
+% and long paths break across lines.
+\DeclareUrlCommand\code{\urlstyle{tt}}
+\DeclareUrlCommand\file{\urlstyle{tt}}
+\newcommand{\json}[1]{\texttt{\{\detokenize{#1}\}}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\setlength{\emergencystretch}{3em}
+
+\title{\textbf{<Title>}\\[0.3em]
+\large <Subtitle: the question this document answers>}
+\date{<DD Month YYYY>}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+<Four to eight sentences: what the thing is, where it lives in the code,
+how it works in one breath, and what the reader will find in the last
+sections (limitations, open questions, recommendations).>
+\end{abstract}
+
+\setcounter{tocdepth}{2}
+\tableofcontents
+\clearpage
+
+% =====================================================================
+\section{Overview}
+% =====================================================================
+
+One sentence per source line, so diffs stay readable.
+Name real files and functions: \file{pkg/module.py}, \code{some_function}.
+
+\begin{keybox}{The invariant}
+A fact the reader must not miss.
+\end{keybox}
+
+\begin{center}
+\small
+\begin{tabular}{L{5.0cm}L{10.0cm}}
+\toprule
+Component & Role \\
+\midrule
+\file{pkg/module.py} & What it does. \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =====================================================================
+\section{Limitations and open questions}\label{sec:limits}
+% =====================================================================
+
+\begin{warnbox}{Known problem}
+What is wrong or missing, and what it means for the reader.
+\end{warnbox}
+
+\end{document}
