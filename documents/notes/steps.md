@@ -1,8 +1,9 @@
 # Refactoring roadmap: what is done, what is in progress and what is left
 
 **Last updated:** 2026-10-26
-**Base:** branch `dev`, commit `26eecb6`. Everything marked done is **uncommitted** working-tree change on top of
-that commit; line numbers in the *Where* column refer to the working tree on 2026-10-26.
+**Base:** branch `dev`. Phase 0 was committed in `46d590e` (on top of `26eecb6`), and line numbers in the *Where*
+column are at `46d590e`. The agent-copy sync and the root Node file deletion are in `bda9d6b`; the newest entry in
+§2 is uncommitted.
 **Tracks:** every finding in the refactoring review
 ([00-refactoring-review-summary.md](00-refactoring-review-summary.md) and its parts 01–04, 172 findings) through the
 five phases of its §5, plus findings made while implementing (`NEW-n`).
@@ -16,21 +17,19 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 
 | Phase | Findings | Done | Partial | Left (of which blocked or waiting) |
 |---|---|---|---|---|
-| 0 — safety and hygiene | 27 | 23 | 3 | 1 (`INF-21` needs your yes) |
+| 0 — safety and hygiene | 27 | 24 | 3 | 0 |
 | 1 — collapse duplication | 23 (+`NEW-1`) | 0 | 2 | 21 (+1) (`INF-1`, `INF-2` on D7; `INF-4` on D2) |
 | 2 — settings, DI, typed contracts | 48 | 0 | 14 | 34 |
 | 3 — god modules, test gap, docs | 43 | 0 | 8 | 35 |
 | 4 — client decomposition | 25 | 0 | 2 | 23 (`WEB-9`, `WEB-32` on D4/D5) |
 | Decisions only / no action | 6 | — | — | 2 wait on decisions (`INF-35` on D1, `INF-23` on D6); 4 need no action |
 
-- **Phase 0 is done in code but not live.** Nothing was committed or deployed. The agent fixes are in the canonical
-  package only; the four deployed AgentCore projects build from their own copies (§9, R1). The edge and client must
-  be deployed in a set order (§9, R2–R4).
+- **Phase 0 is committed (`46d590e`) but not deployed.** The four AgentCore projects now carry the agent fixes too
+  (synced in `bda9d6b`, §9 R1). Deploy the edge first, then the agents and the client (§9, R2–R4).
 - **Tests:** edge 0 → 44 tests (`backend/tests/`); agent 60 → 71 passing, 2 opt-in skipped. Both services start and
   answer their health checks locally; the client builds.
-- **Your input is needed on:** deleting the root Node files (`INF-21`), syncing or collapsing the agent copies
-  (R1), confirming decision D3 (face-scan exposes BP/SpO2, flagged experimental), and adding `BUCKET_*` to your
-  local `backend/.env` (R4).
+- **Still open for the owner:** add `BUCKET_*` to the local `backend/.env` (R4) and check the live task definition
+  before deploying the edge (R3).
 
 ## 1. How to read this file
 
@@ -45,7 +44,25 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 
 ## 2. Progress log
 
-### 2026-10-26 — Phase 0 implemented in the working tree; uncommitted
+### 2026-10-26 — `.claude/CLAUDE.md` matches Phase 0 (R6, `NEW-3`, `NEW-5`); uncommitted
+- **Done:** rewrote the rule text that still described `API-43`, `API-45`, `API-47`, `AGT-44`, `WEB-19`, `WEB-26`
+  and `WEB-27` as open: each now names where the rule is enforced. Kept the gaps that are still open (`AGT-30`,
+  `API-44`, `API-53`, the chat/summary output boundary). Added `uploads/` and `meals/` to the tenant layout and the
+  legacy `{email}/` uploads to the erasure rule. Moved the grounding commit to `46d590e`, with a note that production
+  keeps the old gaps until deployed. Every symbol the new text cites was checked to exist in the code.
+- **Found:** `NEW-5` (§8): the edge still logs full user ids and object keys in `meals.py`.
+
+### 2026-10-26 — Agent copies synced, root Node files deleted, D3 answered (`INF-21`, R1, D3); committed in `bda9d6b`
+- **Done:** copied the six changed agent files and `.dockerignore` from the canonical package into the four
+  AgentCore projects (`backend/agent/NutrasmartAgent/` and `backend/agent/regions/NutrasmartAgent-{ca,eu,in}/`, each
+  under `app/NutrasmartAgent/`, the projects' `codeLocation`). Before copying, all four matched the canonical package
+  at `26eecb6` byte for byte, so no copy held work of its own; afterwards `diff -r` shows all five trees identical.
+  Deleted the root `package.json` (`{}`) and `package-lock.json` (no packages); the deletion is left unstaged.
+- **Decided:** D3 = (b): heart rate plus BP and SpO2, with BP/SpO2 flagged experimental. `API-48` stands as built.
+- **Not verified:** whether the AgentCore CLI uploads dotfiles with `codeLocation`, and so whether the copies'
+  `.dockerignore` reaches the Docker build (Docker applies it whenever it sits at the context root).
+
+### 2026-10-26 — Phase 0 implemented (`API`, `AGT`, `WEB`, `INF` items in §3); committed in `46d590e`
 - **Done:** 23 of the 27 Phase 0 findings, partial work on 26 later-phase findings (statuses in §3–§7). Edge:
   verified-identity upload keys, key scoping, fail-closed regions, constant-time origin check with a settings-driven
   exemption, `email_verified`, timeouts on S3 and the Google cert fetch, typed face-scan response, generic error
@@ -73,7 +90,7 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 | `API-43` | High | `hmac.compare_digest`; exempt origins from settings, empty by default | done; the demo origin is still set in the task definition until CloudFront is back | `backend/app/main.py:38`, `backend/app/config.py:123`, `backend/ecs/task-definition.json:30` |
 | `API-45` | Med | Presign key from the verified user, under `users/{user_id}/uploads/`; body `email` ignored | done | `backend/app/routes/upload.py:48`, `backend/app/user_keys.py:19` |
 | `API-47` | Med | Unconfigured region → `RegionNotConfigured` → 503; no fallback, no bucket defaults | done | `backend/app/regions.py:73`, `backend/app/main.py:55`, `backend/app/agent_client.py:78` |
-| `API-48` | Med | `FaceScanResponse` whitelist; BP/SpO2 always `experimental: true` | done; assumes D3 = (b) | `backend/app/routes/facescan.py:63` |
+| `API-48` | Med | `FaceScanResponse` whitelist; BP/SpO2 always `experimental: true` | done; D3 = (b) confirmed 2026-10-26 | `backend/app/routes/facescan.py:63` |
 | `API-49` | Med | Require `email_verified is True`; missing e-mail → 401 | done | `backend/app/auth.py:48` |
 | `API-41` | Low | Pin `boto3` | partial: pinned to 1.43.119; lock file left for Phase 3 tooling | `backend/requirements.txt:3` |
 | `API-8` † | Low | Demo origin as a setting, not a constant in `main.py` | done | `backend/app/config.py:123` |
@@ -85,7 +102,7 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 | `AGT-9` | Med | Strands `BedrockModel` gets `boto_client_config` and `chat_max_tokens` | done | `backend/agent/app/nutrasmart_agent/main.py:279` |
 | `AGT-10` | Med | Face-scan model-bucket client gets timeouts from settings | done | `backend/agent/app/nutrasmart_agent/face_scan_biomarkers/services.py:75` |
 | `AGT-36` | High | `evaluate_classifier.py` puts `backend/agent` on `sys.path` (`parents[4]`) | done; moving the scripts to `tools/` goes with the Phase 1 layout | `backend/agent/app/nutrasmart_agent/food_scan/scripts/evaluate_classifier.py:37` |
-| `AGT-37` | Med | Agent `.dockerignore` (env, venvs, tests, scripts, copies) | done for `backend/agent/`; the four CLI copies build from their own context (R1) | `backend/agent/.dockerignore` |
+| `AGT-37` | Med | Agent `.dockerignore` (env, venvs, tests, scripts, copies) | done in all five build contexts (copies synced 2026-10-26) | `backend/agent/.dockerignore` and each project's `app/NutrasmartAgent/.dockerignore` |
 | `AGT-38` | Med | Pin `opencv-python-headless` and `boto3` | partial: both pinned; lower-bound pins, duplicate `pytest` pin and per-target lock left for Phase 1 | `backend/agent/requirements-base.txt:4`, `:18` |
 | `AGT-44` | High | Agent refuses any key outside `users/{user_id}/` (and `..` segments) | done | `backend/agent/app/nutrasmart_agent/main.py:58`, `:341`, `:369` |
 | `WEB-5` | High | S3 PUT under a deadline with a readable timeout message | done | `maitribot/client/src/api.js:82`, `maitribot/client/src/config.js:19` |
@@ -93,7 +110,7 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 | `WEB-19` | Med | 401/403 clears the token and returns to the login gate | done | `maitribot/client/src/api.js:14`, `maitribot/client/src/App.jsx:352` |
 | `WEB-26` | High | `**bold**` rendered as React nodes; no `dangerouslySetInnerHTML` | done | `maitribot/client/src/App.jsx:141`, `:298` |
 | `WEB-27` | High | `X-Origin-Verify` no longer sent by the client | done; absent from a production build | `maitribot/client/src/api.js:18` |
-| `INF-21` | Med | Delete the vestigial root `package.json` (`{}`) and `package-lock.json` | needs yes | `package.json`, `package-lock.json` |
+| `INF-21` | Med | Delete the vestigial root `package.json` (`{}`) and `package-lock.json` | done (2026-10-26) | both files deleted |
 | `INF-22` | Med | Root `.gitignore` covers Python, Node, CDK caches, logs and `.env.*` (keeps `.env.example`) | done | `.gitignore` |
 
 ## 4. Phase 1 — collapse duplication
@@ -180,6 +197,8 @@ project) and on a cutover plan: moving to named targets creates new runtimes wit
 | `WEB-1` | Med | `src/config.js` for every client setting; `.env.example` | partial: request deadlines and `.env.example` added |
 | `WEB-17` | Med | JSDoc typedefs and `// @ts-check` | to do |
 | `WEB-18` † | Low | Client payloads match the backend contract | partial: `email` dropped from presign; `content_type` to `/facescan/analyze` left |
+| `NEW-2` | Med | Legacy `{email}/` uploads covered by erasure, or moved under `users/{user_id}/uploads/` (§8) | to do |
+| `NEW-5` | Med | No user ids, object keys or reply bodies in edge logs (§8) | to do |
 
 ## 6. Phase 3 — god modules, test gap and docs
 
@@ -269,18 +288,15 @@ acceptable; don't generalize further).
 |---|---|---|---|
 | `NEW-1` | Med | `mediapipe==0.10.14` depends on `opencv-contrib-python`, so the agent image installs it **and** the pinned `opencv-python-headless` (both 5.0.0.93 here): two distributions of the same `cv2` module. It also pulls in `jax`, `jaxlib`, `matplotlib` and `sounddevice`. Read with `uv pip show mediapipe` in `backend/agent/venv_agent`, 2026-10-26. Decide which `cv2` build the image keeps and measure the image size. | 1 |
 | `NEW-2` | Med | Uploads made before this change sit at `{email}/{uuid}.{ext}` at the bucket root, outside `users/{user_id}/`, keyed by the plain e-mail. They are food photos and face videos. The erasure job (`.claude/CLAUDE.md` §4) must cover that layout, or a one-off move brings them under `users/{user_id}/uploads/`. How many exist was not checked (needs a read-only listing of the four buckets). | 2 |
-| `NEW-3` | Low | The tenant layout in `.claude/CLAUDE.md` §4 lists `scans/`, `vitals_scans/`, `weekly_summary.txt` and `health_profile.json`, but not `users/{user_id}/meals/` (`backend/app/routes/meals.py:85`) or the new `users/{user_id}/uploads/`. | 3 |
+| `NEW-3` | Low | ~~The tenant layout in `.claude/CLAUDE.md` §4 lists `scans/`, `vitals_scans/`, `weekly_summary.txt` and `health_profile.json`, but not `users/{user_id}/meals/` (`backend/app/routes/meals.py:85`) or the new `users/{user_id}/uploads/`.~~ Done 2026-10-26: both prefixes added. | — |
+| `NEW-5` | Med | The edge still logs identity and payload: `backend/app/routes/meals.py:106`, `:159`, `:171` and `:384` put the full `user_id` or a `users/` object key in the message, and `backend/app/agent_client.py:132` logs up to 500 characters of a non-JSON agent reply, which can hold analysis content. `.claude/CLAUDE.md` §4 forbids both. Found 2026-10-26 while checking the audit-trail rule. | 2 |
 | `NEW-4` | Info | At `26eecb6` food_scan has 60 tests plus 2 opt-in skips, not the 50 the review counted, and `backend/agent/venv_agent` (uv, Python 3.12) replaces the broken `.venv` the review could not run. | — |
 
 ## 9. Rollout notes: what has to happen before Phase 0 is live
 
-- **R1. The deployed agents don't have the agent fixes yet.** Only the canonical package
-  (`backend/agent/app/nutrasmart_agent/`) and `backend/agent/{.dockerignore,requirements-base.txt}` changed. The four
-  AgentCore projects build from their own copies under `backend/agent/NutrasmartAgent/` and
-  `backend/agent/regions/NutrasmartAgent-{ca,eu,in}/`, which now differ from the canonical package (`main.py`,
-  `food_scan/settings.py`, `food_scan/scripts/evaluate_classifier.py`, `face_scan_biomarkers/settings.py`,
-  `face_scan_biomarkers/services.py`, `requirements-base.txt`, and no `.dockerignore`). Either copy the canonical
-  files over the four copies (overwrites tracked files: needs yes) or wait for Phase 1 to collapse them.
+- **R1. Agent copies: done 2026-10-26.** The four AgentCore projects build from their own copies of the package.
+  The changed files and `.dockerignore` were copied into all four (§2), so a deploy of any region now ships the
+  Phase 0 agent fixes. Until Phase 1 collapses the copies, every agent change has to be copied to all four again.
 - **R2. Deploy the edge before the agent and before the client.** The new agent refuses the `{email}/...` keys the
   old edge produces. The new client no longer sends `email`, which the old edge's presign model requires (422). The
   new edge accepts both old and new clients, because it ignores the extra `email` field.
@@ -296,9 +312,9 @@ acceptable; don't generalize further).
 - **R5. Direct-to-ALB local testing.** `MIGRATION_OUTSTANDING_TASKS.md` (Done list) describes sending
   `X-Origin-Verify` from the client to reach the ALB while CloudFront is blocked. The client no longer sends it. If
   that path is needed again, add the header server-side (a dev proxy), never as a `VITE_*` value.
-- **R6. Stale rule text.** `.claude/CLAUDE.md` still describes `API-43`, `API-45`, `API-47`, `AGT-44`, `WEB-26` and
-  `WEB-27` as open gaps (lines 23, 27, 33, 78, 85) and omits the `uploads/` and `meals/` prefixes (`NEW-3`). Update
-  it once these changes are committed.
+- **R6. Stale rule text: done 2026-10-26.** `.claude/CLAUDE.md` now names where each Phase 0 fix is enforced and
+  keeps only the gaps that are still open (§2). Update it again when a phase closes more of them, and after the
+  Phase 0 deploy remove its "until they are deployed" note.
 
 ## 10. Decisions needed (from the summary's §6)
 
@@ -308,7 +324,7 @@ acceptable; don't generalize further).
   with BP/SpO2 forced to `experimental: true` plus a disclaimer, because
   `backend/agent/app/nutrasmart_agent/face_scan_biomarkers/__init__.py` records "the product decision was to surface
   all three" and the client renders all three. Choosing (a) means dropping `bp` and `spo2` from `FaceScanResponse`.
-  **Answer:** _open — please confirm_
+  **Answer:** (b), 2026-10-26: show heart rate plus BP and SpO2, BP/SpO2 flagged experimental.
 - **D4. In-house `FaceScanModal` and `/facescan/analyze`:** delete, or keep behind a provider flag (`WEB-9`).
   **Answer:** _open_
 - **D5. Chat image results:** emit `AnalysisCard` or delete it and its CSS (`WEB-9`, `WEB-32`). **Answer:** _open_
