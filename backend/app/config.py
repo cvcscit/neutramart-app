@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
-S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "sci-neutrasmart-project")
 
 GOOGLE_CLIENT_ID = os.environ.get(
     "GOOGLE_CLIENT_ID",
@@ -57,16 +56,10 @@ GOOGLE_CERTS_TIMEOUT_S = float(os.environ.get("GOOGLE_CERTS_TIMEOUT_S", "5"))
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 MAX_VIDEO_SIZE_BYTES = 400 * 1024 * 1024  # 400MB, matches BP_measurement/app/server.py
 
-# Bedrock is now called from the AgentCore runtime, not the edge. These remain only
-# as a fallback for local/legacy direct-call paths and can be removed once the agent
-# proxy is fully verified in production.
-BEDROCK_MODEL_ID = "global.anthropic.claude-haiku-4-5-20251001-v1:0"
-BEDROCK_REGION = "ap-south-1"
-
 # ─── AgentCore Runtime (agentic backend) ────────────────────────────────────────────
-# The FastAPI edge proxies analyze/chat/summary to a Strands agent deployed on
-# Amazon Bedrock AgentCore Runtime. ARN is injected via env/SSM at deploy.
-AGENT_RUNTIME_ARN = os.environ.get("AGENT_RUNTIME_ARN", "")
+# The FastAPI edge proxies analyze/chat/summary/face_scan to a Strands agent deployed on
+# Amazon Bedrock AgentCore Runtime, one per data region (REGION_AGENT_ARNS below, from SSM).
+# AGENTCORE_REGION is the region assumed when a runtime ARN can't be parsed.
 AGENTCORE_REGION = os.environ.get("AGENTCORE_REGION", "us-east-1")
 
 # Default botocore read timeout (~60s) is too short for slower actions (face_scan: video

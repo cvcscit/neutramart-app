@@ -1,15 +1,15 @@
 {
-  "family": "nutrasmart-backend",
+  "family": "<PROJECT>-backend",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/nutrasmart-ecs-execution-role",
-  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/nutrasmart-ecs-task-role",
+  "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<PROJECT>-ecs-execution-role",
+  "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<PROJECT>-ecs-task-role",
   "containerDefinitions": [
     {
-      "name": "nutrasmart-backend",
-      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/nutrasmart-backend:latest",
+      "name": "<PROJECT>-backend",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/<PROJECT>-backend:<IMAGE_TAG>",
       "essential": true,
       "portMappings": [
         {
@@ -19,44 +19,39 @@
       ],
       "environment": [
         { "name": "AWS_REGION", "value": "<AWS_REGION>" },
-        { "name": "S3_BUCKET_NAME", "value": "<BUCKET_IN>" },
-        { "name": "AGENTCORE_REGION", "value": "us-east-1" },
-        { "name": "DEFAULT_DATA_REGION", "value": "us-east-1" },
+        { "name": "AGENTCORE_REGION", "value": "<AGENTCORE_REGION>" },
+        { "name": "DEFAULT_DATA_REGION", "value": "<DEFAULT_DATA_REGION>" },
         { "name": "BUCKET_US", "value": "<BUCKET_US>" },
         { "name": "BUCKET_IN", "value": "<BUCKET_IN>" },
         { "name": "BUCKET_CA", "value": "<BUCKET_CA>" },
         { "name": "BUCKET_EU", "value": "<BUCKET_EU>" },
-        { "name": "ALLOWED_ORIGINS", "value": "https://nutrasmart.in,http://localhost:5173,http://localhost:5174" },
-        { "name": "ORIGIN_VERIFY_EXEMPT_ORIGINS", "value": "http://maitribot-demo-ui.s3-website.ap-south-1.amazonaws.com" }
+        { "name": "ALLOWED_ORIGINS", "value": "<ALLOWED_ORIGINS>" },
+        { "name": "ORIGIN_VERIFY_EXEMPT_ORIGINS", "value": "<ORIGIN_VERIFY_EXEMPT_ORIGINS>" }
       ],
       "secrets": [
         {
           "name": "GOOGLE_CLIENT_ID",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/google-client-id"
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/<PROJECT>/google-client-id"
         },
         {
           "name": "CF_ORIGIN_SECRET",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/cf-origin-secret"
-        },
-        {
-          "name": "AGENT_RUNTIME_ARN",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-runtime-arn"
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/<PROJECT>/cf-origin-secret"
         },
         {
           "name": "AGENT_ARN_US",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-us"
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/<PROJECT>/agent-arn-us"
         },
         {
           "name": "AGENT_ARN_IN",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-in"
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/<PROJECT>/agent-arn-in"
         },
         {
           "name": "AGENT_ARN_CA",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-ca"
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/<PROJECT>/agent-arn-ca"
         },
         {
           "name": "AGENT_ARN_EU",
-          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<ACCOUNT_ID>:parameter/nutrasmart/agent-arn-eu"
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/<PROJECT>/agent-arn-eu"
         }
       ],
       "healthCheck": {
@@ -72,7 +67,7 @@
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/nutrasmart-backend",
+          "awslogs-group": "/ecs/<PROJECT>-backend",
           "awslogs-region": "<AWS_REGION>",
           "awslogs-stream-prefix": "ecs"
         }

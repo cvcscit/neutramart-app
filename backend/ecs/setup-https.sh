@@ -6,33 +6,26 @@ set -euo pipefail
 # ══════════════════════════════════════════════════════════════
 # Prerequisites:
 #   - setup.sh has been run (resources.env exists)
-#   - Domain nutrasmart.in is registered and hosted in Route 53
+#   - DOMAIN (config.env) is registered and its hosted zone is in this account's Route 53
+#     (on 2026-10-26 the nutrasmart.in zone was still in the previous account)
 #
 # What this script does:
-#   1. Requests an ACM certificate for nutrasmart.in + *.nutrasmart.in
+#   1. Requests an ACM certificate for DOMAIN + *.DOMAIN
 #   2. Creates DNS validation records in Route 53
 #   3. Waits for certificate validation
 #   4. Adds HTTPS (443) listener to ALB
 #   5. Redirects HTTP (80) → HTTPS (443)
-#   6. Points domain to ALB via Route 53 alias record
+#   6. Points DOMAIN and API_DOMAIN to ALB via Route 53 alias records
 #   7. Opens port 443 on ALB security group
 #
-# Usage:
-#   cd nutrasmart_backend/ecs
-#   chmod +x setup-https.sh
-#   ./setup-https.sh
+# Usage, from any directory:
+#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/setup-https.sh
 # ══════════════════════════════════════════════════════════════
 
-DOMAIN="nutrasmart.in"
-API_SUBDOMAIN="api.nutrasmart.in"
-PROFILE="nutrasmart"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# Load resource IDs from setup
-if [ ! -f resources.env ]; then
-    echo "ERROR: resources.env not found. Run setup.sh first."
-    exit 1
-fi
-source resources.env
+require_aws_identity
+require_resources
 
 echo "══════════════════════════════════════════════"
 echo "  Setting up HTTPS for $DOMAIN"
@@ -47,7 +40,7 @@ HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name \
     --dns-name "$DOMAIN" \
     --query "HostedZones[?Name=='${DOMAIN}.'].Id" \
     --output text \
-    --profile $PROFILE | sed 's|/hostedzone/||')
+    --profile "$AWS_PROFILE" | sed 's|/hostedzone/||')
 
 if [ -z "$HOSTED_ZONE_ID" ]; then
     echo "ERROR: Hosted zone for $DOMAIN not found in Route 53."
@@ -63,7 +56,7 @@ echo "==> [2/7] Requesting ACM Certificate..."
 # Check if a certificate already exists
 EXISTING_CERT=$(aws acm list-certificates \
     --region $AWS_REGION \
-    --profile $PROFILE \
+    --profile "$AWS_PROFILE" \
     --query "CertificateSummaryList[?DomainName=='${DOMAIN}'].CertificateArn" \
     --output text)
 
@@ -76,7 +69,7 @@ else
         --subject-alternative-names "*.${DOMAIN}" \
         --validation-method DNS \
         --region $AWS_REGION \
-        --profile $PROFILE \
+        --profile "$AWS_PROFILE" \
         --query 'CertificateArn' --output text)
     echo "    Certificate requested: $CERT_ARN"
 fi
@@ -92,7 +85,7 @@ sleep 5
 VALIDATION_JSON=$(aws acm describe-certificate \
     --certificate-arn "$CERT_ARN" \
     --region $AWS_REGION \
-    --profile $PROFILE \
+    --profile "$AWS_PROFILE" \
     --query 'Certificate.DomainValidationOptions[0].ResourceRecord')
 
 VALIDATION_NAME=$(echo "$VALIDATION_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['Name'])")
@@ -103,7 +96,7 @@ echo "    Validation CNAME: $VALIDATION_NAME -> $VALIDATION_VALUE"
 # Create the CNAME record for validation
 aws route53 change-resource-record-sets \
     --hosted-zone-id "$HOSTED_ZONE_ID" \
-    --profile $PROFILE \
+    --profile "$AWS_PROFILE" \
     --change-batch "{
         \"Changes\": [{
             \"Action\": \"UPSERT\",
@@ -125,7 +118,7 @@ echo "==> [4/7] Waiting for certificate validation (this may take 2-5 minutes)..
 aws acm wait certificate-validated \
     --certificate-arn "$CERT_ARN" \
     --region $AWS_REGION \
-    --profile $PROFILE
+    --profile "$AWS_PROFILE"
 
 echo "    Certificate validated!"
 
@@ -139,7 +132,7 @@ aws ec2 authorize-security-group-ingress \
     --port 443 \
     --cidr 0.0.0.0/0 \
     --region $AWS_REGION \
-    --profile $PROFILE > /dev/null 2>&1 || echo "    Port 443 already open."
+    --profile "$AWS_PROFILE" > /dev/null 2>&1 || echo "    Port 443 already open."
 
 echo "    ALB SG updated: inbound 443 from 0.0.0.0/0"
 
@@ -157,7 +150,7 @@ HTTPS_LISTENER_ARN=$(aws elbv2 create-listener \
     --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
     --default-actions Type=forward,TargetGroupArn="$TG_ARN" \
     --region $AWS_REGION \
-    --profile $PROFILE \
+    --profile "$AWS_PROFILE" \
     --query 'Listeners[0].ListenerArn' --output text)
 
 echo "    HTTPS listener created: $HTTPS_LISTENER_ARN"
@@ -166,14 +159,14 @@ echo "    HTTPS listener created: $HTTPS_LISTENER_ARN"
 HTTP_LISTENER_ARN=$(aws elbv2 describe-listeners \
     --load-balancer-arn "$ALB_ARN" \
     --region $AWS_REGION \
-    --profile $PROFILE \
+    --profile "$AWS_PROFILE" \
     --query "Listeners[?Port==\`80\`].ListenerArn" --output text)
 
 aws elbv2 modify-listener \
     --listener-arn "$HTTP_LISTENER_ARN" \
     --default-actions 'Type=redirect,RedirectConfig={Protocol=HTTPS,Port=443,StatusCode=HTTP_301}' \
     --region $AWS_REGION \
-    --profile $PROFILE > /dev/null
+    --profile "$AWS_PROFILE" > /dev/null
 
 echo "    HTTP (80) now redirects to HTTPS (443)"
 
@@ -186,13 +179,13 @@ echo "==> [7/7] Creating DNS records pointing to ALB..."
 ALB_HOSTED_ZONE=$(aws elbv2 describe-load-balancers \
     --load-balancer-arns "$ALB_ARN" \
     --region $AWS_REGION \
-    --profile $PROFILE \
+    --profile "$AWS_PROFILE" \
     --query 'LoadBalancers[0].CanonicalHostedZoneId' --output text)
 
 # Create alias records for both root domain and api subdomain
 aws route53 change-resource-record-sets \
     --hosted-zone-id "$HOSTED_ZONE_ID" \
-    --profile $PROFILE \
+    --profile "$AWS_PROFILE" \
     --change-batch "{
         \"Changes\": [
             {
@@ -210,7 +203,7 @@ aws route53 change-resource-record-sets \
             {
                 \"Action\": \"UPSERT\",
                 \"ResourceRecordSet\": {
-                    \"Name\": \"$API_SUBDOMAIN\",
+                    \"Name\": \"$API_DOMAIN\",
                     \"Type\": \"A\",
                     \"AliasTarget\": {
                         \"HostedZoneId\": \"$ALB_HOSTED_ZONE\",
@@ -223,19 +216,17 @@ aws route53 change-resource-record-sets \
     }" > /dev/null
 
 echo "    $DOMAIN -> ALB"
-echo "    $API_SUBDOMAIN -> ALB"
+echo "    $API_DOMAIN -> ALB"
 
 # ──────────────────────────────────────────────
 # SAVE HTTPS RESOURCE IDS
 # ──────────────────────────────────────────────
-cat >> resources.env << EOF
+cat >> "$ECS_DIR/resources.env" << EOF
 
-# HTTPS resources (added by setup-https.sh)
+# HTTPS resources (added by setup-https.sh; the domains are in config.env)
 CERT_ARN=$CERT_ARN
 HTTPS_LISTENER_ARN=$HTTPS_LISTENER_ARN
 HOSTED_ZONE_ID=$HOSTED_ZONE_ID
-DOMAIN=$DOMAIN
-API_SUBDOMAIN=$API_SUBDOMAIN
 EOF
 
 echo ""
@@ -244,15 +235,15 @@ echo "  HTTPS SETUP COMPLETE"
 echo "══════════════════════════════════════════════"
 echo ""
 echo "  Root:    https://$DOMAIN"
-echo "  API:     https://$API_SUBDOMAIN"
-echo "  Health:  https://$API_SUBDOMAIN/health"
+echo "  API:     https://$API_DOMAIN"
+echo "  Health:  https://$API_DOMAIN/health"
 echo ""
 echo "  Certificate: $CERT_ARN"
 echo "  SSL Policy:  ELBSecurityPolicy-TLS13-1-2-2021-06"
 echo ""
 echo "  Next steps:"
 echo "    1. Update ALLOWED_ORIGINS in your backend to use https://"
-echo "    2. Update your frontend API_URL to: https://$API_SUBDOMAIN"
+echo "    2. Update your frontend API_URL to: https://$API_DOMAIN"
 echo "    3. DNS propagation may take a few minutes"
 echo ""
 echo "══════════════════════════════════════════════"

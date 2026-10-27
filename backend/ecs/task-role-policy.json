@@ -1,0 +1,43 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "UserObjects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+      "Resource": [
+        "arn:aws:s3:::<BUCKET_US>/users/*",
+        "arn:aws:s3:::<BUCKET_IN>/users/*",
+        "arn:aws:s3:::<BUCKET_CA>/users/*",
+        "arn:aws:s3:::<BUCKET_EU>/users/*"
+      ]
+    },
+    {
+      "Sid": "ListUserPrefixes",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": [
+        "arn:aws:s3:::<BUCKET_US>",
+        "arn:aws:s3:::<BUCKET_IN>",
+        "arn:aws:s3:::<BUCKET_CA>",
+        "arn:aws:s3:::<BUCKET_EU>"
+      ],
+      "Condition": { "StringLike": { "s3:prefix": "users/*" } }
+    },
+    {
+      "Sid": "InvokeRegionalAgents",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:InvokeAgentRuntime",
+      "Resource": [
+        "<AGENT_ARN_US>",
+        "<AGENT_ARN_US>/*",
+        "<AGENT_ARN_IN>",
+        "<AGENT_ARN_IN>/*",
+        "<AGENT_ARN_CA>",
+        "<AGENT_ARN_CA>/*",
+        "<AGENT_ARN_EU>",
+        "<AGENT_ARN_EU>/*"
+      ]
+    }
+  ]
+}

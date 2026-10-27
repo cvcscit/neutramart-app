@@ -1,9 +1,9 @@
 # Refactoring roadmap: what is done, what is in progress and what is left
 
-**Last updated:** 2026-10-26
+**Last updated:** 2026-10-27
 **Base:** branch `dev`. Phase 0 was committed in `46d590e` (on top of `26eecb6`), and line numbers in the *Where*
-column are at `46d590e`. The agent-copy sync and the root Node file deletion are in `bda9d6b`; the newest entry in
-§2 is uncommitted.
+column are at `46d590e`. The agent-copy sync and the root Node file deletion are in `bda9d6b`, the rule-text update
+in `5eff3ff`, the log fix in `8928e1d`; the newest entry in §2 (the edge deploy scripts) is uncommitted.
 **Tracks:** every finding in the refactoring review
 ([00-refactoring-review-summary.md](00-refactoring-review-summary.md) and its parts 01–04, 172 findings) through the
 five phases of its §5, plus findings made while implementing (`NEW-n`).
@@ -18,18 +18,22 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 | Phase | Findings | Done | Partial | Left (of which blocked or waiting) |
 |---|---|---|---|---|
 | 0 — safety and hygiene | 27 | 24 | 3 | 0 |
-| 1 — collapse duplication | 23 (+`NEW-1`) | 0 | 2 | 21 (+1) (`INF-1`, `INF-2` on D7; `INF-4` on D2) |
-| 2 — settings, DI, typed contracts | 48 | 0 | 14 | 34 |
+| 1 — collapse duplication | 23 (+`NEW-1`) | 6 | 6 | 11 (+1) (`INF-1`, `INF-2` on D7; `INF-4` on D2) |
+| 2 — settings, DI, typed contracts | 48 | 1 | 14 | 33 |
 | 3 — god modules, test gap, docs | 43 | 0 | 8 | 35 |
 | 4 — client decomposition | 25 | 0 | 2 | 23 (`WEB-9`, `WEB-32` on D4/D5) |
 | Decisions only / no action | 6 | — | — | 2 wait on decisions (`INF-35` on D1, `INF-23` on D6); 4 need no action |
 
 - **Phase 0 is committed (`46d590e`) but not deployed.** The four AgentCore projects now carry the agent fixes too
   (synced in `bda9d6b`, §9 R1). Deploy the edge first, then the agents and the client (§9, R2–R4).
-- **Tests:** edge 0 → 44 tests (`backend/tests/`); agent 60 → 71 passing, 2 opt-in skipped. Both services start and
+- **The edge deploy scripts are rewritten (Phase 1, uncommitted):** one `backend/ecs/config.env`, a task definition
+  with no literals, `deploy.sh` that registers a revision per commit and rolls back to the previous one, and a
+  read-only `deploy.sh --plan`. Nothing has run against AWS (§9 R3, R7).
+- **Tests:** edge 0 → 62 tests (`backend/tests/`); agent 60 → 73 passing, 2 opt-in skipped. Both services start and
   answer their health checks locally; the client builds.
-- **Still open for the owner:** add `BUCKET_*` to the local `backend/.env` (R4) and check the live task definition
-  before deploying the edge (R3).
+- **Still open for the owner:** add `BUCKET_*` to the local `backend/.env` (R4); a profile for account
+  `792207721590`, then `deploy.sh --plan` before the first deploy (R3, R7); whether the S3 demo build is still used
+  (R7).
 
 ## 1. How to read this file
 
@@ -44,7 +48,42 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 
 ## 2. Progress log
 
-### 2026-10-26 — No identity, keys or reply text in edge or agent logs (`NEW-5`); uncommitted
+### 2026-10-27 — Edge deploy scripts: one config, a revision per commit, rollback (`INF-9`–`INF-20`); uncommitted
+- **One config (`INF-12`, `INF-18`):** `backend/ecs/config.env` holds every value the four scripts and the templates
+  need (account, project, regions, the four `w360-nutrasmart-*` buckets, origins, domains). `backend/ecs/lib.sh`
+  loads it for all four scripts. `task-definition.json` keeps only `<NAME>` placeholders, and
+  `backend/ecs/deploy_helpers.py render` fills them (JSON-escaped; it stops with the names of any unfilled ones).
+  `ALLOWED_ORIGINS` is `https://nutrasmart.in` only, so no localhost origins in production.
+- **One credential convention (`INF-14`):** every script needs `AWS_PROFILE` and stops unless it resolves to
+  `EXPECTED_ACCOUNT_ID` (`792207721590`). `deploy.sh` no longer needs `resources.env`; `setup-https.sh` and
+  `teardown.sh` do, and stop unless it names the same account, project and region.
+- **Deploy (`INF-9`):** `deploy.sh` tags the image with the commit (or `<sha>-dirty-<UTC>` with `ALLOW_DIRTY=1`;
+  otherwise uncommitted build inputs stop it), no longer pushes `:latest`, and registers a revision for that image.
+  It moves the service to the new revision and, if the service doesn't stabilize, back to the one it ran before.
+  `deploy.sh --plan` is read-only: it diffs the running revision against the rendered one (image, roles, env, secret
+  ARNs, health check) and stops. Environment values whose name looks like a secret are masked in the diff.
+- **SSM (`INF-10`, `INF-20` partial):** `setup.sh` creates any of the six parameters that is missing and never
+  overwrites one: `google-client-id` as `String` from `config.env`, `cf-origin-secret` as a generated `SecureString`
+  (piped in, never in argv or output), `agent-arn-*` from each AgentCore project's `deployed-state.json`.
+  `teardown.sh` deletes all six plus the legacy `agent-runtime-arn`.
+- **Task role (`INF-11`):** `backend/ecs/task-role-policy.json` grants object access only under `users/*` in the four
+  buckets, `ListBucket` only for that prefix, and `InvokeAgentRuntime` on the four runtime ARNs and their endpoints
+  (`/*`). `BedrockInvokeLegacy` (`bedrock:InvokeModel` on `*`) and `GetBucketLocation` are gone. The edge's S3 calls
+  were checked: every key it reads, writes, lists or deletes is under `users/{user_id}/`.
+- **Partial (`INF-13`, `INF-15`, `INF-16`):** `setup.sh` refuses to run if the project's VPC exists, but it still
+  can't resume a half-finished run. `setup-https.sh` takes its domains from `config.env`, but still waits for ACM with
+  `sleep 5`. `teardown.sh` waits for the ALB to be deleted instead of `sleep 30`, but still leaves the certificate and
+  the Route 53 records.
+- **Dead settings (`API-9`):** `S3_BUCKET_NAME`, `AGENT_RUNTIME_ARN`, `BEDROCK_MODEL_ID` and `BEDROCK_REGION` were
+  removed from `backend/app/config.py`, which nothing read, and their entries from the task definition.
+- **Verified:** edge 62 passed (12 new in `backend/tests/test_deploy_helpers.py`: both templates render from
+  `config.env` alone, also through `lib.sh`; no localhost or old bucket; the policy names only the four buckets and
+  runtimes; diff and masking). `bash -n` passes on all five scripts. The guards were run offline: with no
+  `AWS_PROFILE`, `deploy.sh --plan` and `setup.sh` stop before any AWS call. `shellcheck` is not installed. **Nothing
+  ran against AWS.**
+- **D7 evidence (still open):** see §10.
+
+### 2026-10-26 — No identity, keys or reply text in edge or agent logs (`NEW-5`); committed in `8928e1d`
 - **Done:** the edge names a user in logs only by `user_log_id` (`backend/app/auth.py`), the same 12-character
   SHA-256 prefix as the agent's `_log_id`, so lines correlate. `backend/app/routes/meals.py` no longer logs the user
   id or object keys (a meal key also holds the user-typed meal name); `backend/app/agent_client.py` logs a malformed
@@ -58,7 +97,7 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
   it is absent from the log or the error text.
 - **Docs:** the audit-trail rule in `.claude/CLAUDE.md` §4 now states the rule and names the two hash helpers.
 
-### 2026-10-26 — `.claude/CLAUDE.md` matches Phase 0 (R6, `NEW-3`, `NEW-5`); uncommitted
+### 2026-10-26 — `.claude/CLAUDE.md` matches Phase 0 (R6, `NEW-3`, `NEW-5`); committed in `5eff3ff`
 - **Done:** rewrote the rule text that still described `API-43`, `API-45`, `API-47`, `AGT-44`, `WEB-19`, `WEB-26`
   and `WEB-27` as open: each now names where the rule is enforced. Kept the gaps that are still open (`AGT-30`,
   `API-44`, `API-53`, the chat/summary output boundary). Added `uploads/` and `meals/` to the tenant layout and the
@@ -101,13 +140,13 @@ Related: [00 summary](00-refactoring-review-summary.md) (roadmap and decisions) 
 |---|---|---|---|---|
 | `API-10` | Med | Explicit botocore `Config` (timeouts, retries) on the regional S3 clients | done | `backend/app/regions.py:64`, `backend/app/config.py:52` |
 | `API-11` | Med | Bounded Google cert fetch; outage → 503, not 401 | partial: a cached, lifespan-owned transport waits for `API-28` | `backend/app/auth.py:38` |
-| `API-43` | High | `hmac.compare_digest`; exempt origins from settings, empty by default | done; the demo origin is still set in the task definition until CloudFront is back | `backend/app/main.py:38`, `backend/app/config.py:123`, `backend/ecs/task-definition.json:30` |
+| `API-43` | High | `hmac.compare_digest`; exempt origins from settings, empty by default | done; the demo origin is set in `backend/ecs/config.env` until CloudFront is back | `backend/app/main.py:38`, `ORIGIN_VERIFY_EXEMPT_ORIGINS` in `backend/app/config.py` and `backend/ecs/config.env` |
 | `API-45` | Med | Presign key from the verified user, under `users/{user_id}/uploads/`; body `email` ignored | done | `backend/app/routes/upload.py:48`, `backend/app/user_keys.py:19` |
 | `API-47` | Med | Unconfigured region → `RegionNotConfigured` → 503; no fallback, no bucket defaults | done | `backend/app/regions.py:73`, `backend/app/main.py:55`, `backend/app/agent_client.py:78` |
 | `API-48` | Med | `FaceScanResponse` whitelist; BP/SpO2 always `experimental: true` | done; D3 = (b) confirmed 2026-10-26 | `backend/app/routes/facescan.py:63` |
 | `API-49` | Med | Require `email_verified is True`; missing e-mail → 401 | done | `backend/app/auth.py:48` |
 | `API-41` | Low | Pin `boto3` | partial: pinned to 1.43.119; lock file left for Phase 3 tooling | `backend/requirements.txt:3` |
-| `API-8` † | Low | Demo origin as a setting, not a constant in `main.py` | done | `backend/app/config.py:123` |
+| `API-8` † | Low | Demo origin as a setting, not a constant in `main.py` | done | `ORIGIN_VERIFY_EXEMPT_ORIGINS` in `backend/app/config.py` |
 | `API-12` † | Low | Health-check probe with `timeout=` (Dockerfile and the task definition, which overrides it) | done | `backend/Dockerfile:23`, `backend/ecs/task-definition.json:65` |
 | `API-15` † | Med | One `user_id_from_email` instead of six copies | done | `backend/app/auth.py:26` |
 | `API-18` † | Low | Runtime ARN resolved once in `get_data_context`; `invoke_agent` requires it | done | `backend/app/agent_client.py:78` |
@@ -142,16 +181,16 @@ project) and on a cutover plan: moving to named targets creates new runtimes wit
 | `INF-6` † | Low | One home for the agent Dockerfile and requirements files | to do |
 | `INF-7` † | Low | `runtimeVersion` (`PYTHON_3_14`) agrees with the 3.12 image | to do |
 | `INF-8` † | Low | `--platform` moves from `FROM` to the build command | to do |
-| `INF-9` | High | `deploy.sh` registers SHA-tagged task-definition revisions; real rollback | to do |
-| `INF-10` | High | `setup.sh` creates, and `teardown.sh` deletes, all seven SSM parameters | to do |
-| `INF-11` | Med | Task-role policy built from the region list; drop `BedrockInvokeLegacy` | to do |
-| `INF-12` | Med | One `ecs/config.env` sourced by all four scripts | to do |
-| `INF-13` | Med | `setup.sh` idempotent (look up or create), or move ECS to CDK | to do |
-| `INF-14` | Med | One credential convention (`AWS_PROFILE`) | to do |
-| `INF-15` † | Low | `setup-https.sh`: domain as a parameter, poll ACM instead of `sleep` | to do |
-| `INF-16` † | Low | `teardown.sh` waits on the ALB and removes cert, records, all SSM params | to do |
-| `INF-18` † | Med | `task-definition.json`: region and origins as parameters, no localhost in prod | to do |
-| `INF-20` † | Low | Google client ID as a plain `String` parameter; `cf-origin-secret` as SecureString | to do |
+| `INF-9` | High | `deploy.sh` registers SHA-tagged task-definition revisions; real rollback | done (2026-10-27); `--plan` diffs against the live revision |
+| `INF-10` | High | `setup.sh` creates, and `teardown.sh` deletes, all seven SSM parameters | done (2026-10-27); six now, `agent-runtime-arn` dropped (`API-9`) and deleted by teardown |
+| `INF-11` | Med | Task-role policy built from the region list; drop `BedrockInvokeLegacy` | done (2026-10-27) in `task-role-policy.json`; not applied to the live role (R7) |
+| `INF-12` | Med | One `ecs/config.env` sourced by all four scripts | done (2026-10-27), through `backend/ecs/lib.sh` |
+| `INF-13` | Med | `setup.sh` idempotent (look up or create), or move ECS to CDK | partial: refuses to run when the VPC exists; no resume |
+| `INF-14` | Med | One credential convention (`AWS_PROFILE`) | done (2026-10-27); every script checks the account |
+| `INF-15` † | Low | `setup-https.sh`: domain as a parameter, poll ACM instead of `sleep` | partial: domains from `config.env`; `sleep 5` left |
+| `INF-16` † | Low | `teardown.sh` waits on the ALB and removes cert, records, all SSM params | partial: waits on the ALB, deletes all SSM params; cert and records left |
+| `INF-18` † | Med | `task-definition.json`: region and origins as parameters, no localhost in prod | done (2026-10-27) |
+| `INF-20` † | Low | Google client ID as a plain `String` parameter; `cf-origin-secret` as SecureString | partial: new parameters get these types; the live `google-client-id` is never overwritten, so it stays `SecureString` |
 | `INF-27` † | Low | One `deployed-state.json`; scrub old-account IDs from docs | to do |
 | `INF-34` † | Med | Scope the agent policy's Bedrock and marketplace wildcards | to do |
 | `API-42` † | Low | Backend Dockerfile hygiene | partial: `COPY app/` and `.dockerignore` done; `PYTHONUNBUFFERED`, port `ARG` left |
@@ -170,7 +209,7 @@ project) and on a cutover plan: moving to named targets creates new runtimes wit
 | `API-5` † | Low | Content-type → extension map in settings | to do |
 | `API-6` † | Low | `agent_client` literals (connect timeout, qualifier) into settings or constants | to do |
 | `API-7` † | Low | `Period` enum and named constants in `meals.py` | to do |
-| `API-9` † | Low | Delete dead settings and their task-definition entries | to do |
+| `API-9` † | Low | Delete dead settings and their task-definition entries | done (2026-10-27): `S3_BUCKET_NAME`, `AGENT_RUNTIME_ARN`, `BEDROCK_MODEL_ID`, `BEDROCK_REGION` |
 | `API-16` | Med | Typed `AgentClient` methods and an `AgentAction` enum | to do |
 | `API-22` | High | `DataContext` and `AuthenticatedUser` dataclasses; typed payloads | to do |
 | `API-23` † | Med | `response_model=` on every route | partial: `/facescan/analyze` done |
@@ -191,7 +230,7 @@ project) and on a cutover plan: moving to named targets creates new runtimes wit
 | `API-44` † | High | Rate limit keyed on the verified user, shared storage | to do |
 | `API-50` † | Low | Enumerated CORS headers; production origins only from env | to do |
 | `API-53` † | Low | `X-User-Country` override in dev only | to do |
-| `INF-19` † | Med | Edge code defaults that point at the old account | partial: bucket defaults removed; Google client ID literal, demo origins, Bedrock constants left |
+| `INF-19` † | Med | Edge code defaults that point at the old account | partial: bucket defaults removed, Bedrock constants and `S3_BUCKET_NAME` deleted (2026-10-27, `API-9`); Google client ID literal and demo origins left |
 | `AGT-1` | High | One agent settings module, loaded once and injected | partial: `main.py` no longer reads the environment |
 | `AGT-2` | Med | `storage.py` (`UserDataLayout`, `ScanRecordStore`) | to do |
 | `AGT-3` † | Med | `max_tokens` and `days` literals into settings | partial: chat and summary token limits done; `days=60` left |
@@ -314,12 +353,11 @@ acceptable; don't generalize further).
 - **R2. Deploy the edge before the agent and before the client.** The new agent refuses the `{email}/...` keys the
   old edge produces. The new client no longer sends `email`, which the old edge's presign model requires (422). The
   new edge accepts both old and new clients, because it ignores the extra `email` field.
-- **R3. The edge needs a new task-definition revision.** `deploy.sh` only pushes `:latest` and forces a new
-  deployment; it never registers a task definition (`INF-9`). Before deploying this edge build:
-  (a) confirm the live revision sets `BUCKET_US/IN/CA/EU`, since there are no code defaults any more and a missing
-  bucket now answers 503; (b) if the S3 demo build is still in use, register a revision that adds
-  `ORIGIN_VERIFY_EXEMPT_ORIGINS` (as in `backend/ecs/task-definition.json:30`), otherwise the demo origin gets 403.
-  Remove that variable once CloudFront is restored.
+- **R3. The edge needs a new task-definition revision: addressed 2026-10-27 (not deployed).** The old `deploy.sh`
+  only pushed `:latest` and forced a new deployment, so the live task still runs the revision `setup.sh` or a person
+  registered (`INF-9`). The new `deploy.sh` registers a revision on every deploy. Its `--plan` diff answers the two
+  questions this note used to ask: (a) does the live revision set `BUCKET_US/IN/CA/EU` (there are no code defaults
+  any more, and a missing bucket answers 503), and (b) does it set `ORIGIN_VERIFY_EXEMPT_ORIGINS`.
 - **R4. Local edge runs need `BUCKET_*`.** `backend/.env` has no `BUCKET_*` lines and used to fall back to the old
   `sci-neutrasmart-project*` names; it now answers 503 for every user route. Add the buckets
   (`backend/.env.example` lists every variable).
@@ -329,6 +367,26 @@ acceptable; don't generalize further).
 - **R6. Stale rule text: done 2026-10-26.** `.claude/CLAUDE.md` now names where each Phase 0 fix is enforced and
   keeps only the gaps that are still open (§2). Update it again when a phase closes more of them, and after the
   Phase 0 deploy remove its "until they are deployed" note.
+- **R7. First run of the new ECS scripts (2026-10-27).** Each step below changes AWS and needs the owner's yes.
+  - **Profile.** Every script needs `AWS_PROFILE` for account `792207721590`. On 2026-10-26 this machine had none.
+    `deploy.sh` needs nothing else. `setup-https.sh` and `teardown.sh` also need `backend/ecs/resources.env`, which
+    exists only on the machine that ran `setup.sh`.
+  - **Read the plan.** `AWS_PROFILE=<profile> backend/ecs/deploy.sh --plan` is read-only. Against the template as it
+    stood before this change, the plan would show: the image moves from `:latest` to the commit's tag;
+    `S3_BUCKET_NAME` and the `AGENT_RUNTIME_ARN` secret are removed; `ALLOWED_ORIGINS` loses the two localhost
+    origins. The live revision may differ from that template, which is why the plan comes first.
+  - **S3 demo build.** The template's `ALLOWED_ORIGINS` never included the demo origin. A browser on the demo is
+    blocked by CORS even when `ORIGIN_VERIFY_EXEMPT_ORIGINS` lets the request through. If the demo is still used, add
+    its origin to `ALLOWED_ORIGINS` in `backend/ecs/config.env` until CloudFront is restored. If it isn't, empty
+    `ORIGIN_VERIFY_EXEMPT_ORIGINS` (an empty value leaves the variable unset). **Owner's call; open.**
+  - **Task-role policy.** `deploy.sh` doesn't touch IAM. Read the live policy with
+    `aws iam get-role-policy --role-name nutrasmart-ecs-task-role --policy-name nutrasmart-s3-bedrock`. Then put the
+    rendered `task-role-policy.json`: source `lib.sh`, run `export_runtime_arns`, and pipe `render
+    task-role-policy.json` into `aws iam put-role-policy ... --policy-document file:///dev/stdin`. After that, the edge
+    can no longer reach anything outside `users/` (it doesn't today), and it can no longer call
+    `bedrock:InvokeModel`.
+  - **SSM.** The live `google-client-id` stays `SecureString` (`INF-20`), and the live `agent-runtime-arn` stays until
+    teardown. Nothing here overwrites a parameter.
 
 ## 10. Decisions needed (from the summary's §6)
 
@@ -344,7 +402,13 @@ acceptable; don't generalize further).
 - **D5. Chat image results:** emit `AnalysisCard` or delete it and its CSS (`WEB-9`, `WEB-32`). **Answer:** _open_
 - **D6. `documents/data-flow-diagram.pdf`:** keep in git or build in CI (`INF-23`). **Answer:** _open_
 - **D7. AgentCore CLI:** does `deploy` select a target, and may `codeLocation` point outside the project
-  (`INF-1`, `INF-2`). **Answer:** _open_ (check with the installed CLI before Phase 1)
+  (`INF-1`, `INF-2`). **Answer:** _open_ (check with the installed CLI before Phase 1). **Evidence so far
+  (2026-10-27, read-only):**
+  - A third-party mirror of an AWS agent skill documents `agentcore deploy --target <name> -y` for CLI v0.9.0 and
+    later (References). It was not checked against the CLI, which is not installed here.
+  - The project schema the CLI generated, `backend/agent/NutrasmartAgent/agentcore/.llm-context/agentcore.ts:48`, has
+    `codeLocation` (a directory path) and, for container builds, an optional `buildContextPath` (`:50`). Whether
+    either may point outside the project directory is not stated there.
 - **D8. `mediapipe==0.10.14` + `numpy==2.0.2` on arm64 / Python 3.12** (`AGT-39`). **Answer:** _open_; works on
   x86_64 / Python 3.12 (FaceMesh pass, 2026-10-26).
 
@@ -356,3 +420,24 @@ acceptable; don't generalize further).
 - The BP and SpO2 bundles' target names are assumed to be `sbp`/`dbp` and `spo2` (what the client reads); the
   trained bundles in the model bucket were not opened.
 - The agent image was not built; arm64 wheels are unverified (D8).
+- The new ECS scripts (2026-10-27) were checked with `bash -n`, offline runs of their guards and the tests in
+  `backend/tests/test_deploy_helpers.py`; `shellcheck` is not installed. None of their AWS calls ran. Three things
+  rest on documentation, not on a run:
+  - that `register-task-definition` accepts the rendered file;
+  - that `InvokeAgentRuntime` is authorized against the runtime and its endpoint (hence the `/*` grants);
+  - that the `describe-parameters` name filter matches exactly one parameter.
+  Empty environment values are dropped from the rendered task definition, because the ECS documentation found doesn't
+  say whether `""` is accepted.
+
+## References
+
+Read 2026-10-27, for the deploy-script track:
+
+- [AgentCore resource-based policies](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/resource-based-policies.html):
+  `InvokeAgentRuntime` is evaluated against both the agent runtime and the endpoint invoked.
+- [aws ssm put-parameter](https://docs.aws.amazon.com/cli/latest/reference/ssm/put-parameter.html): `--overwrite`
+  defaults to false, and an existing name fails with `ParameterAlreadyExists`.
+- [aws ecs wait services-stable](https://docs.aws.amazon.com/cli/v1/reference/ecs/wait/services-stable.html): polls
+  every 15 seconds and exits 255 after 40 failed checks.
+- [agents deploy (third-party mirror of an AWS agent skill)](https://mcpservers.org/agent-skills/aws/agents-deploy):
+  `agentcore deploy --target` (D7).

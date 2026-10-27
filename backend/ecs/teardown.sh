@@ -4,23 +4,24 @@ set -euo pipefail
 # ══════════════════════════════════════════════════════════════
 # nutrasmart — Teardown ALL Infrastructure
 # ══════════════════════════════════════════════════════════════
-# WARNING: This deletes everything created by setup.sh.
-#          All data will be lost. This cannot be undone.
+# WARNING: This deletes everything created by setup.sh: the service, cluster, ALB, network, IAM
+#          roles, ECR repository (every image), the log group (the edge's audit trail) and the SSM
+#          parameters, the origin secret included. This cannot be undone. It leaves the data buckets,
+#          the agent runtimes, the ACM certificate and the Route 53 records from setup-https.sh.
 #
-# Usage:
-#   cd netrramart_backend/ecs
-#   ./teardown.sh
+# Usage, from any directory:
+#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/teardown.sh
 # ══════════════════════════════════════════════════════════════
 
-if [ ! -f resources.env ]; then
-    echo "ERROR: resources.env not found. Nothing to tear down."
-    exit 1
-fi
-source resources.env
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+require_aws_identity
+require_resources
 
 echo "══════════════════════════════════════════════"
-echo "  WARNING: This will DELETE all nutrasmart"
-echo "  infrastructure in AWS. This cannot be undone."
+echo "  WARNING: This will DELETE all ${PROJECT} edge"
+echo "  infrastructure in account $AWS_ACCOUNT_ID."
+echo "  This cannot be undone."
 echo "══════════════════════════════════════════════"
 echo ""
 read -p "Type 'DELETE' to confirm: " CONFIRM
@@ -73,7 +74,7 @@ done
 
 aws elbv2 delete-load-balancer --load-balancer-arn $ALB_ARN --region $AWS_REGION 2>/dev/null || true
 echo "    Waiting for ALB to be deleted..."
-sleep 30
+aws elbv2 wait load-balancers-deleted --load-balancer-arns $ALB_ARN --region $AWS_REGION 2>/dev/null || true
 
 aws elbv2 delete-target-group --target-group-arn $TG_ARN --region $AWS_REGION 2>/dev/null || true
 
@@ -143,10 +144,15 @@ aws logs delete-log-group --log-group-name /ecs/${PROJECT}-backend --region $AWS
 
 # 13. Delete SSM parameters
 echo "==> Deleting SSM parameters..."
-aws ssm delete-parameter --name "/${PROJECT}/google-client-id" --region $AWS_REGION 2>/dev/null || true
+# Every parameter the task definition reads, plus agent-runtime-arn, which older revisions read.
+SSM_PATHS=()
+for NAME in $(python3 "$HELPERS" ssm-names) agent-runtime-arn; do
+    SSM_PATHS+=("/${PROJECT}/${NAME}")
+done
+aws ssm delete-parameters --names "${SSM_PATHS[@]}" --region $AWS_REGION > /dev/null 2>/dev/null || true
 
 # Cleanup
-rm -f resources.env
+rm -f "$ECS_DIR/resources.env"
 
 echo ""
 echo "══════════════════════════════════════════════"

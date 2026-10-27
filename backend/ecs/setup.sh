@@ -4,27 +4,35 @@ set -euo pipefail
 # ══════════════════════════════════════════════════════════════
 # nutrasmart — Production Fargate Infrastructure Setup
 # ══════════════════════════════════════════════════════════════
-# This script creates ALL AWS resources from scratch:
+# This script creates ALL AWS resources from scratch, once per account:
 #   VPC, Subnets, IGW, NAT GW, ALB, Security Groups,
-#   IAM Roles, ECR, CloudWatch, ECS Cluster + Service + AutoScaling
+#   IAM Roles, ECR, CloudWatch, SSM parameters, ECS Cluster + Service + AutoScaling
+# It refuses to run when the account already has the project's VPC: rerunning it would create a
+# second VPC and NAT gateway before failing. Use deploy.sh for an existing estate.
 #
 # Prerequisites:
-#   - AWS CLI v2 installed and configured
-#   - Docker installed
-#   - jq installed (brew install jq)
+#   - AWS CLI v2 and python3
+#   - config.env filled in (GOOGLE_CLIENT_ID is needed only if /<PROJECT>/google-client-id is missing)
+#   - The four agent runtimes deployed, so their deployed-state.json files hold the runtime ARNs
 #
-# Usage:
-#   chmod +x setup.sh
-#   ./setup.sh
+# Usage, from any directory:
+#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/setup.sh
 # ══════════════════════════════════════════════════════════════
 
-AWS_REGION="ap-south-1"
-PROJECT="nutrasmart"
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# Auto-detect AWS Account ID
-AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-echo "==> AWS Account: $AWS_ACCOUNT_ID"
-echo "==> Region: $AWS_REGION"
+require_aws_identity
+export_runtime_arns
+
+EXISTING_VPC=$(aws ec2 describe-vpcs \
+    --filters "Name=tag:Name,Values=${PROJECT}-vpc" \
+    --region "$AWS_REGION" \
+    --query 'Vpcs[0].VpcId' --output text)
+[ "$EXISTING_VPC" = "None" ] \
+    || die "VPC ${PROJECT}-vpc ($EXISTING_VPC) already exists in $AWS_REGION: this account has the estate."
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
 echo ""
 
 # ──────────────────────────────────────────────
@@ -194,7 +202,7 @@ echo "    Listener: HTTP:80 -> Target Group"
 echo "==> [6/12] Creating IAM Roles..."
 
 # Task Execution Role (ECR pull + CloudWatch logs + SSM read)
-cat > /tmp/ecs-trust-policy.json << 'POLICY'
+cat > "$WORK/ecs-trust-policy.json" << 'POLICY'
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -207,7 +215,7 @@ POLICY
 
 EXEC_ROLE_ARN=$(aws iam create-role \
     --role-name ${PROJECT}-ecs-execution-role \
-    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
+    --assume-role-policy-document "file://$WORK/ecs-trust-policy.json" \
     --query 'Role.Arn' --output text 2>/dev/null || \
     aws iam get-role --role-name ${PROJECT}-ecs-execution-role --query 'Role.Arn' --output text)
 
@@ -215,8 +223,8 @@ aws iam attach-role-policy \
     --role-name ${PROJECT}-ecs-execution-role \
     --policy-arn arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy 2>/dev/null || true
 
-# SSM read permission for execution role (to inject GOOGLE_CLIENT_ID)
-cat > /tmp/ssm-read-policy.json << POLICY
+# SSM read permission for execution role (to inject the task definition's secrets)
+cat > "$WORK/ssm-read-policy.json" << POLICY
 {
   "Version": "2012-10-17",
   "Statement": [{
@@ -230,63 +238,27 @@ POLICY
 aws iam put-role-policy \
     --role-name ${PROJECT}-ecs-execution-role \
     --policy-name ${PROJECT}-ssm-read \
-    --policy-document file:///tmp/ssm-read-policy.json
+    --policy-document "file://$WORK/ssm-read-policy.json"
 
 echo "    Execution Role: $EXEC_ROLE_ARN"
 
 # Task Role (S3 + Bedrock — this is what the running container uses)
 TASK_ROLE_ARN=$(aws iam create-role \
     --role-name ${PROJECT}-ecs-task-role \
-    --assume-role-policy-document file:///tmp/ecs-trust-policy.json \
+    --assume-role-policy-document "file://$WORK/ecs-trust-policy.json" \
     --query 'Role.Arn' --output text 2>/dev/null || \
     aws iam get-role --role-name ${PROJECT}-ecs-task-role --query 'Role.Arn' --output text)
 
-cat > /tmp/task-policy.json << POLICY
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "S3Access",
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject"
-      ],
-      "Resource": "arn:aws:s3:::sci-neutrasmart-project/*"
-    },
-    {
-      "Sid": "S3Presign",
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetBucketLocation"
-      ],
-      "Resource": "arn:aws:s3:::sci-neutrasmart-project"
-    },
-    {
-      "Sid": "AgentCoreInvoke",
-      "Effect": "Allow",
-      "Action": [
-        "bedrock-agentcore:InvokeAgentRuntime"
-      ],
-      "Resource": "arn:aws:bedrock-agentcore:us-east-1:${AWS_ACCOUNT_ID}:runtime/*"
-    },
-    {
-      "Sid": "BedrockInvokeLegacy",
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-POLICY
+# task-role-policy.json: objects under users/ in the four data buckets, listing only that prefix, and
+# InvokeAgentRuntime on the four runtimes. Each runtime is granted with "/*" as well, because an
+# invocation is authorized against both the runtime and the endpoint it is called through (DEFAULT).
+# A recreated runtime has a new ARN: re-render this policy and put it again.
+render task-role-policy.json > "$WORK/task-policy.json"
 
 aws iam put-role-policy \
     --role-name ${PROJECT}-ecs-task-role \
     --policy-name ${PROJECT}-s3-bedrock \
-    --policy-document file:///tmp/task-policy.json
+    --policy-document "file://$WORK/task-policy.json"
 
 echo "    Task Role: $TASK_ROLE_ARN"
 
@@ -318,16 +290,10 @@ aws logs put-retention-policy \
 echo "    Log group: /ecs/${PROJECT}-backend (30-day retention)"
 
 # ──────────────────────────────────────────────
-# 7. SSM — STORE GOOGLE CLIENT ID
+# 7. SSM — EVERY PARAMETER THE TASK DEFINITION READS
 # ──────────────────────────────────────────────
-echo "==> [9/12] Storing Google Client ID in SSM..."
-read -p "Enter your Google OAuth Client ID: " GOOGLE_CID
-aws ssm put-parameter \
-    --name "/${PROJECT}/google-client-id" \
-    --value "$GOOGLE_CID" \
-    --type SecureString \
-    --region $AWS_REGION --overwrite > /dev/null
-echo "    Stored as /${PROJECT}/google-client-id"
+echo "==> [9/12] Creating the SSM parameters the task definition reads..."
+ensure_ssm_parameters
 
 # ──────────────────────────────────────────────
 # 8. ECS CLUSTER
@@ -343,21 +309,16 @@ echo "    Cluster: ${PROJECT}-cluster"
 # ──────────────────────────────────────────────
 echo "==> [11/12] Registering Task Definition..."
 
-# Generate task definition with real values
-TASK_DEF=$(cat task-definition.json | \
-    sed "s|<ACCOUNT_ID>|${AWS_ACCOUNT_ID}|g" | \
-    sed "s|<AWS_REGION>|${AWS_REGION}|g" | \
-    sed "s|<ALB_DNS>|${ALB_DNS}|g" | \
-    sed "s|<BUCKET_US>|${BUCKET_US:-sci-neutrasmart-project-us}|g" | \
-    sed "s|<BUCKET_IN>|${BUCKET_IN:-sci-neutrasmart-project}|g" | \
-    sed "s|<BUCKET_CA>|${BUCKET_CA:-sci-neutrasmart-project-ca}|g" | \
-    sed "s|<BUCKET_EU>|${BUCKET_EU:-sci-neutrasmart-project-eu}|g")
+# The image does not exist yet: tasks fail to start until deploy.sh pushes it and registers its own
+# revision.
+export IMAGE_TAG="${IMAGE_TAG:-$(git -C "$REPO_ROOT" rev-parse --short HEAD)}"
+render task-definition.json > "$WORK/task-definition.json"
 
-echo "$TASK_DEF" | aws ecs register-task-definition \
-    --cli-input-json file:///dev/stdin \
+aws ecs register-task-definition \
+    --cli-input-json "file://$WORK/task-definition.json" \
     --region $AWS_REGION > /dev/null
 
-echo "    Task definition registered"
+echo "    Task definition registered (image tag $IMAGE_TAG)"
 
 # ──────────────────────────────────────────────
 # 10. ECS SERVICE + AUTO SCALING
@@ -409,8 +370,8 @@ echo "    Auto Scaling: 1-4 tasks, target 70% CPU"
 # ──────────────────────────────────────────────
 # SAVE RESOURCE IDS FOR TEARDOWN
 # ──────────────────────────────────────────────
-cat > resources.env << EOF
-# Auto-generated by setup.sh — used by teardown.sh
+cat > "$ECS_DIR/resources.env" << EOF
+# Auto-generated by setup.sh — used by deploy.sh, setup-https.sh and teardown.sh
 VPC_ID=$VPC_ID
 PUB_SUBNET_1=$PUB_SUBNET_1
 PUB_SUBNET_2=$PUB_SUBNET_2
@@ -443,8 +404,10 @@ echo "  ALB URL:  http://$ALB_DNS"
 echo "  Health:   http://$ALB_DNS/health"
 echo ""
 echo "  Next steps:"
-echo "    1. Run ./deploy.sh to build and deploy"
-echo "    2. Update your frontend API_URL to: http://$ALB_DNS"
+echo "    1. Run deploy.sh to build and deploy"
+echo "    2. Point CloudFront's origin at the ALB with the custom header X-Origin-Verify set to the"
+echo "       value of /${PROJECT}/cf-origin-secret (read it in the console; never paste it anywhere else)"
+echo "    3. Update your frontend API_URL to the CloudFront domain"
 echo ""
-echo "  Resource IDs saved to: ecs/resources.env"
+echo "  Resource IDs saved to: $ECS_DIR/resources.env"
 echo "══════════════════════════════════════════════"

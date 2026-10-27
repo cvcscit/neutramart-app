@@ -2,97 +2,119 @@
 set -euo pipefail
 
 # ══════════════════════════════════════════════════════════════
-# nutrasmart — Build, Push, and Deploy to Fargate
+# nutrasmart — build, push and deploy the edge to Fargate
 # ══════════════════════════════════════════════════════════════
-# Usage:
-#   cd netrramart_backend/ecs
-#   ./deploy.sh
+# Builds backend/ as an amd64 image tagged with the commit, registers a task-definition revision that
+# runs exactly that image (task-definition.json filled from config.env), points the service at the
+# new revision and waits for it to stabilize. If it does not, the service goes back to the revision it
+# ran before. Every revision stays registered, so any earlier one can be redeployed by hand.
+#
+# Usage, from any directory:
+#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/deploy.sh --plan   # read-only diff
+#   AWS_PROFILE=<profile for account 792207721590> backend/ecs/deploy.sh          # build and deploy
+#
+# The image is built from the working tree. Uncommitted changes to the build inputs below stop the
+# deploy unless ALLOW_DIRTY=1, which tags the image <commit>-dirty-<UTC time> so it never passes for
+# the commit.
 # ══════════════════════════════════════════════════════════════
 
-# Load resource IDs from setup
-if [ ! -f resources.env ]; then
-    echo "ERROR: resources.env not found. Run setup.sh first."
-    exit 1
-fi
-source resources.env
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# Override with: AWS_PROFILE=<your-profile> ./deploy.sh
-PROFILE="${AWS_PROFILE:-nutrasmart}"
-export AWS_PROFILE="$PROFILE"
+PLAN=false
+case "${1:-}" in
+    "") ;;
+    --plan) PLAN=true ;;
+    *) die "Usage: deploy.sh [--plan]" ;;
+esac
 
-ECR_REPO="${PROJECT}-backend"
+# Needs only config.env and the account check, not resources.env: any machine with the profile can deploy.
+require_aws_identity
+
 ECS_CLUSTER="${PROJECT}-cluster"
 ECS_SERVICE="${PROJECT}-backend-service"
-ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+BUILD_INPUTS=(backend/app backend/requirements.txt backend/Dockerfile backend/.dockerignore
+    backend/ecs/task-definition.json backend/ecs/config.env)
 
-# Use git commit SHA as image tag (immutable, traceable)
-cd ..
-IMAGE_TAG=$(git rev-parse --short HEAD 2>/dev/null || echo "latest")
-IMAGE_URI="${ECR_URI}:${IMAGE_TAG}"
+IMAGE_TAG=$(git -C "$REPO_ROOT" rev-parse --short HEAD)
+if [ -n "$(git -C "$REPO_ROOT" status --porcelain -- "${BUILD_INPUTS[@]}")" ]; then
+    if [ "$PLAN" = false ] && [ "${ALLOW_DIRTY:-}" != 1 ]; then
+        git -C "$REPO_ROOT" status --short -- "${BUILD_INPUTS[@]}" >&2
+        die "Uncommitted changes to the build inputs above. Commit them, or set ALLOW_DIRTY=1."
+    fi
+    IMAGE_TAG="${IMAGE_TAG}-dirty-$(date -u +%Y%m%dT%H%M%SZ)"
+fi
+export IMAGE_TAG
+
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+render task-definition.json > "$WORK/new.json"
+IMAGE_URI=$(python3 -c 'import json, sys; print(json.load(sys.stdin)["containerDefinitions"][0]["image"])' \
+    < "$WORK/new.json")
+
+CURRENT_TASK_DEF=$(aws ecs describe-services \
+    --cluster "$ECS_CLUSTER" \
+    --services "$ECS_SERVICE" \
+    --region "$AWS_REGION" \
+    --query 'services[0].taskDefinition' --output text)
+[ "$CURRENT_TASK_DEF" != "None" ] || die "Service $ECS_SERVICE not found in $ECS_CLUSTER."
+
+aws ecs describe-task-definition \
+    --task-definition "$CURRENT_TASK_DEF" \
+    --region "$AWS_REGION" \
+    --query taskDefinition --output json > "$WORK/live.json"
 
 echo "══════════════════════════════════════════════"
-echo "  Deploying nutrasmart Backend"
-echo "  Image tag: $IMAGE_TAG"
+echo "  Running: $CURRENT_TASK_DEF"
+echo "  New:     $IMAGE_URI"
 echo "══════════════════════════════════════════════"
+python3 "$HELPERS" diff "$WORK/live.json" "$WORK/new.json"
 echo ""
 
-# 1. Authenticate with ECR
-echo "==> [1/5] Logging into ECR..."
-aws ecr get-login-password --region $AWS_REGION | \
-    docker login --username AWS --password-stdin \
-    "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+if [ "$PLAN" = true ]; then
+    echo "Plan only: nothing was built, pushed or registered."
+    exit 0
+fi
 
-# 2. Build
-echo "==> [2/5] Building Docker image..."
-docker build --platform linux/amd64 -t $ECR_REPO:$IMAGE_TAG .
+echo "==> [1/5] Logging in to ECR..."
+aws ecr get-login-password --region "$AWS_REGION" | \
+    docker login --username AWS --password-stdin "${IMAGE_URI%%/*}"
 
-# 3. Tag and push
-echo "==> [3/5] Pushing to ECR..."
-docker tag $ECR_REPO:$IMAGE_TAG $IMAGE_URI
-docker push $IMAGE_URI
+echo "==> [2/5] Building $IMAGE_URI (linux/amd64)..."
+docker build --platform linux/amd64 -t "$IMAGE_URI" "$REPO_ROOT/backend"
 
-# Also tag as latest for the task definition
-docker tag $ECR_REPO:$IMAGE_TAG ${ECR_URI}:latest
-docker push ${ECR_URI}:latest
+# ECR scans every pushed image (scanOnPush); results:
+#   aws ecr describe-image-scan-findings --repository-name ${PROJECT}-backend --image-id imageTag=<tag>
+echo "==> [3/5] Pushing..."
+docker push "$IMAGE_URI"
 
-# 4. Check ECR scan results
-echo "==> [4/5] Checking image scan..."
-echo "    (Scan runs asynchronously — check ECR console for results)"
+echo "==> [4/5] Registering the task definition..."
+NEW_TASK_DEF=$(aws ecs register-task-definition \
+    --cli-input-json "file://$WORK/new.json" \
+    --region "$AWS_REGION" \
+    --query 'taskDefinition.taskDefinitionArn' --output text)
+echo "    $NEW_TASK_DEF"
 
-# 5. Update task definition with new image and force deployment
-echo "==> [5/5] Deploying to ECS..."
-
-# Get current task definition
-CURRENT_TASK_DEF=$(aws ecs describe-services \
-    --cluster $ECS_CLUSTER \
-    --services $ECS_SERVICE \
-    --region $AWS_REGION \
-    --query 'services[0].taskDefinition' --output text)
-
-echo "    Current task def: $CURRENT_TASK_DEF"
-
-# Force new deployment
+echo "==> [5/5] Deploying and waiting for the service to stabilize (up to 10 minutes)..."
 aws ecs update-service \
-    --cluster $ECS_CLUSTER \
-    --service $ECS_SERVICE \
-    --force-new-deployment \
-    --region $AWS_REGION > /dev/null
+    --cluster "$ECS_CLUSTER" \
+    --service "$ECS_SERVICE" \
+    --task-definition "$NEW_TASK_DEF" \
+    --region "$AWS_REGION" > /dev/null
 
-echo "    Deployment initiated. Waiting for stability..."
-
-# Wait for service to stabilize (timeout: 10 minutes)
 if aws ecs wait services-stable \
-    --cluster $ECS_CLUSTER \
-    --services $ECS_SERVICE \
-    --region $AWS_REGION 2>/dev/null; then
+    --cluster "$ECS_CLUSTER" \
+    --services "$ECS_SERVICE" \
+    --region "$AWS_REGION"; then
     echo ""
     echo "══════════════════════════════════════════════"
     echo "  DEPLOYMENT SUCCESSFUL"
     echo "══════════════════════════════════════════════"
     echo ""
-    echo "  Image:  $IMAGE_URI"
-    echo "  URL:    http://$ALB_DNS"
-    echo "  Health: http://$ALB_DNS/health"
+    echo "  Revision: $NEW_TASK_DEF"
+    echo "  Image:    $IMAGE_URI"
+    echo "  Previous: $CURRENT_TASK_DEF (redeploy it with update-service --task-definition to roll back)"
+    echo "  Logs:     aws logs tail /ecs/${PROJECT}-backend --since 15m --region $AWS_REGION"
     echo ""
 else
     echo ""
@@ -101,15 +123,15 @@ else
     echo "══════════════════════════════════════════════"
     echo ""
 
-    # Rollback to previous task definition
     aws ecs update-service \
-        --cluster $ECS_CLUSTER \
-        --service $ECS_SERVICE \
-        --task-definition $CURRENT_TASK_DEF \
-        --force-new-deployment \
-        --region $AWS_REGION > /dev/null
+        --cluster "$ECS_CLUSTER" \
+        --service "$ECS_SERVICE" \
+        --task-definition "$CURRENT_TASK_DEF" \
+        --region "$AWS_REGION" > /dev/null
 
-    echo "  Rolled back to: $CURRENT_TASK_DEF"
-    echo "  Check logs: aws logs tail /ecs/${PROJECT}-backend --region $AWS_REGION"
+    echo "  Service is going back to: $CURRENT_TASK_DEF"
+    echo "  Failed revision (still registered): $NEW_TASK_DEF"
+    echo "  Watch: aws ecs wait services-stable --cluster $ECS_CLUSTER --services $ECS_SERVICE --region $AWS_REGION"
+    echo "  Logs:  aws logs tail /ecs/${PROJECT}-backend --since 15m --region $AWS_REGION"
     exit 1
 fi
