@@ -4,12 +4,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "prepare:shenai": "rm -rf public/shenai-sdk && mkdir -p public && cp -R node_modules/@shenai/sdk public/shenai-sdk",
+    "dev": "npm run prepare:shenai && vite",
+    "build": "npm run prepare:shenai && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@react-oauth/google": "^0.12.1",
+    "@shenai/sdk": "^3.1.2",
     "jwt-decode": "^4.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

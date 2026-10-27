@@ -15,7 +15,8 @@
       "Sid": "S3Location",
       "Effect": "Allow",
       "Action": [
-        "s3:GetBucketLocation"
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
       ],
       "Resource": "arn:aws:s3:::w360-nutrasmart-us"
     },
@@ -39,13 +40,17 @@
     {
       "Sid": "BiomarkerModelsAccess",
       "Effect": "Allow",
-      "Action": ["s3:GetObject"],
+      "Action": [
+        "s3:GetObject"
+      ],
       "Resource": "arn:aws:s3:::biomarker-processing/models/*"
     },
     {
       "Sid": "BiomarkerModelsListAccess",
       "Effect": "Allow",
-      "Action": ["s3:ListBucket"],
+      "Action": [
+        "s3:ListBucket"
+      ],
       "Resource": "arn:aws:s3:::biomarker-processing"
     }
   ]
