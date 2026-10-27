@@ -1,9 +1,14 @@
+"""FastAPI edge: assembles the app, its middleware, error handlers and the ``/api`` routers."""
+
+import hmac
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
-from app.config import ALLOWED_ORIGINS, CF_ORIGIN_SECRET
+from app.config import ALLOWED_ORIGINS, CF_ORIGIN_SECRET, ORIGIN_VERIFY_EXEMPT_ORIGINS
 from app.limiter import limiter
+from app.regions import RegionNotConfigured
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.routes.upload import router as upload_router
 from app.routes.analyze import router as analyze_router
@@ -16,25 +21,21 @@ app = FastAPI()
 app.state.limiter = limiter
 
 
-# Narrow, explicit carve-out: a public S3-hosted demo build of the maitribot UI needs to
-# reach this backend directly while CloudFront is account-wide blocked (see
-# documents/MIGRATION_OUTSTANDING_TASKS.md). The demo build cannot embed CF_ORIGIN_SECRET
-# -- that secret would be extractable from public JS, defeating its purpose -- so instead
-# this one Origin is explicitly allowed to skip the check. Remove once CloudFront is
-# restored and the real domain-based access path is back.
-DEMO_ORIGIN_EXEMPT = "http://maitribot-demo-ui.s3-website.ap-south-1.amazonaws.com"
-
-
 class OriginVerifyMiddleware(BaseHTTPMiddleware):
-    """Block direct ALB access — only allow requests through CloudFront (plus the
-    explicit DEMO_ORIGIN_EXEMPT carve-out above)."""
+    """Block direct ALB access — only allow requests through CloudFront.
+
+    CloudFront adds ``X-Origin-Verify: <CF_ORIGIN_SECRET>``; the browser never knows the
+    secret. ``ORIGIN_VERIFY_EXEMPT_ORIGINS`` (empty by default) is the temporary carve-out
+    for the S3 demo build while CloudFront is blocked; see its comment in app.config.
+    """
     async def dispatch(self, request: Request, call_next):
-        # Skip check if no secret configured (local dev), for health checks, or for the
-        # public demo origin (see DEMO_ORIGIN_EXEMPT comment).
+        # Skip check if no secret configured (local dev), for health checks, or for an
+        # explicitly exempted origin.
         if (not CF_ORIGIN_SECRET or request.url.path == "/health"
-                or request.headers.get("origin") == DEMO_ORIGIN_EXEMPT):
+                or request.headers.get("origin") in ORIGIN_VERIFY_EXEMPT_ORIGINS):
             return await call_next(request)
-        if request.headers.get("X-Origin-Verify") != CF_ORIGIN_SECRET:
+        supplied = request.headers.get("X-Origin-Verify", "")
+        if not hmac.compare_digest(supplied.encode(), CF_ORIGIN_SECRET.encode()):
             return JSONResponse(status_code=403, content={"detail": "Forbidden"})
         return await call_next(request)
 
@@ -47,6 +48,15 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,
         content={"detail": "Too many requests. Please try again later."},
+    )
+
+
+@app.exception_handler(RegionNotConfigured)
+async def region_not_configured_handler(request: Request, exc: RegionNotConfigured):
+    """A data region without a bucket or runtime is unavailable, never rerouted."""
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "This service is not available in your region yet."},
     )
 
 

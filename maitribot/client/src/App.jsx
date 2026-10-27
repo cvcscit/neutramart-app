@@ -136,7 +136,11 @@ class MessageBoundary extends React.Component {
     return this.props.children;
   }
 }
-const mdBold = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+// Renders **bold** runs as <strong> and everything else as plain text nodes. Chat replies,
+// model output and error strings are untrusted, so they are never parsed as HTML.
+function BoldText({ text }) {
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 ? <strong key={i}>{part}</strong> : part));
+}
 
 const _show = (v) => v !== undefined && v !== null && v !== "" && v !== "N/A";
 
@@ -291,7 +295,7 @@ function Bubble({ m }) {
   return (
     <div className={`bubble ${m.role}`}>
       {m.thumb && <img className="bubble-thumb" src={m.thumb} alt="upload" />}
-      {m.text && <span dangerouslySetInnerHTML={{ __html: mdBold(m.text) }} />}
+      {m.text && <span><BoldText text={m.text} /></span>}
     </div>
   );
 }
@@ -341,6 +345,14 @@ export default function App() {
   const latestVitals = [...messages].reverse().find((m) => m.type === "vitals")?.data;
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, busy]);
+
+  // Any 401/403 from the API means the stored token is no longer accepted: drop it and go
+  // back to the login gate instead of failing every action until a manual reload.
+  useEffect(() => {
+    api.setUnauthorizedHandler(logout);
+    return () => api.setUnauthorizedHandler(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The Shen.AI scan runs on its own isolated page (/scan.html) and hands the result back
   // through sessionStorage, since it can't live in this document (see senai_scan/README).
@@ -400,7 +412,7 @@ export default function App() {
     setBusy(true);
     try {
       // 1) presign against the user's REGIONAL bucket
-      const { url, key } = await api.presign(file.name, file.type, user.email);
+      const { url, key } = await api.presign(file.name, file.type);
       const region = api.regionFromPresign(url);
       // 2) browser uploads the image bytes straight to regional S3
       await api.putToS3(url, file);
@@ -474,7 +486,6 @@ export default function App() {
       {dash && <DashboardPanel onClose={() => setDash(false)} />}
       {scanOpen && (
         <FaceScanModal
-          email={user.email}
           onClose={() => setScanOpen(false)}
           onResult={handleScanResult}
         />

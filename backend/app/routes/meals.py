@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from app.auth import get_current_user
+from app.auth import get_current_user, user_id_from_email
 from app.regions import get_data_context
 from app.limiter import limiter
 
@@ -58,12 +58,6 @@ class SaveMealRequest(BaseModel):
     dishes: list[Dish] = []
 
 
-# ─── Helper ───────────────────────────────────────────────────────────────────
-
-def _user_id(email: str) -> str:
-    return email.replace("@", "_at_").replace(".", "_")
-
-
 # ─── POST /api/meals ──────────────────────────────────────────────────────────
 
 @router.post("/meals")
@@ -85,7 +79,7 @@ def save_meal(
     if len(body.dishes) == 0:
         raise HTTPException(status_code=400, detail="At least one dish is required.")
 
-    uid = _user_id(_user["email"])
+    uid = user_id_from_email(_user["email"])
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     meal_id = f"{timestamp}_{body.mealName[:30].replace(' ', '_')}"
     meal_key = f"users/{uid}/meals/{meal_id}.json"
@@ -234,7 +228,7 @@ def get_meals(
     Return saved meals for the current user, newest first.
     Optionally filter by startDate / endDate (YYYY-MM-DD).
     """
-    uid = _user_id(_user["email"])
+    uid = user_id_from_email(_user["email"])
     meals = _load_all_meals(uid, ctx["s3"], ctx["bucket"])
 
     # Parse date filters
@@ -282,7 +276,7 @@ def get_nutrition_summary(
     Aggregate nutrition totals by period for the current user.
     Returns { data: [ { date/week_start/month_start/year_start, total_*, meal_count } ] }
     """
-    uid = _user_id(_user["email"])
+    uid = user_id_from_email(_user["email"])
 
     try:
         tz = ZoneInfo(timezone)
@@ -376,7 +370,7 @@ def delete_meal(
     Delete a specific meal by its meal_id.
     The meal_id is the filename stem, so we reconstruct the full S3 key.
     """
-    uid = _user_id(_user["email"])
+    uid = user_id_from_email(_user["email"])
     meal_key = f"users/{uid}/meals/{meal_id}.json"
 
     try:

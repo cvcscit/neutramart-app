@@ -1,7 +1,25 @@
 .DS_Store
-.env
-*venv*/
 
+# Local configuration and secrets; only the placeholder .env.example files are tracked.
+.env
+.env.*
+!.env.example
+*.local
+
+# Python
+*venv*/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / build output
 *node_modules/
 dist/
-*.local
+
+# AWS CDK synth output and tool caches
+cdk.out/
+.cache/
+
+*.log

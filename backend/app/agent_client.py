@@ -25,8 +25,6 @@ from app.config import (
     AGENT_LOCAL_TIMEOUT_S,
     AGENT_LOCAL_URL,
     AGENTCORE_REGION,
-    DEFAULT_DATA_REGION,
-    REGION_AGENT_ARNS,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,13 +75,13 @@ def _invoke_local(payload: dict, session_id: str | None = None) -> str:
     return response.text
 
 
-def invoke_agent(payload: dict, agent_arn: str | None = None, region: str | None = None,
-                  session_id: str | None = None) -> dict:
+def invoke_agent(payload: dict, agent_arn: str, session_id: str | None = None) -> dict:
     """Invoke the regional AgentCore runtime and return the parsed JSON response.
 
-    ``agent_arn`` selects the regional runtime; if omitted it resolves from ``region``
-    (or DEFAULT_DATA_REGION). With ``AGENT_LOCAL_URL`` set, the local agent is called
-    instead. Raises AgentError on failure or an ``error`` payload.
+    ``agent_arn`` is the runtime of the user's data region (``get_data_context``); there is
+    no fallback to another region's runtime. With ``AGENT_LOCAL_URL`` set, the local agent
+    is called instead and ``agent_arn`` is ignored. Raises AgentError on failure or an
+    ``error`` payload.
 
     ``session_id`` overrides the default stable per-user session. Pass a fresh random
     id (e.g. uuid4) for actions that don't need conversational/session continuity
@@ -93,17 +91,13 @@ def invoke_agent(payload: dict, agent_arn: str | None = None, region: str | None
     raw = (
         _invoke_local(payload, session_id)
         if AGENT_LOCAL_URL
-        else _invoke_remote(payload, agent_arn, region, session_id)
+        else _invoke_remote(payload, agent_arn, session_id)
     )
     return _parse_result(raw.strip())
 
 
-def _invoke_remote(payload: dict, agent_arn: str | None, region: str | None,
-                    session_id: str | None = None) -> str:
+def _invoke_remote(payload: dict, agent_arn: str, session_id: str | None = None) -> str:
     """Invoke the deployed AgentCore runtime and return the concatenated response body."""
-    if agent_arn is None:
-        region = region or DEFAULT_DATA_REGION
-        agent_arn = REGION_AGENT_ARNS.get(region) or REGION_AGENT_ARNS.get(DEFAULT_DATA_REGION)
     if not agent_arn:
         raise AgentError("No AgentCore runtime ARN configured for this region.")
 

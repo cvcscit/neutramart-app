@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import List, Optional
 
-from app.auth import get_current_user
+from app.auth import get_current_user, user_id_from_email
 from app.agent_client import invoke_agent, AgentError
 from app.regions import get_data_context
 from app.limiter import limiter
@@ -36,7 +36,7 @@ def chat(
     The agent pulls the user's scans / summary / health profile on demand via its tools,
     all within the user's data region.
     """
-    user_id = _user["email"].replace("@", "_at_").replace(".", "_")
+    user_id = user_id_from_email(_user["email"])
     history = [{"role": m.role, "content": m.content} for m in (body.history or [])]
 
     try:

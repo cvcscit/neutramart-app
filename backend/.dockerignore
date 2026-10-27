@@ -7,3 +7,8 @@ agent/
 ecs/
 node_modules/
 .venv/
+venv*/
+tests/
+.pytest_cache/
+*.md
+.env.*

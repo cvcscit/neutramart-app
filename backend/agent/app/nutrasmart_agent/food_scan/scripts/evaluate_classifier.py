@@ -17,7 +17,7 @@ matched by SHA-256 to their training split. Only images the model never trained 
 
 Example::
 
-    python scripts/evaluate_classifier.py "/data/Indian Food Images" --device cuda \\
+    python app/nutrasmart_agent/food_scan/scripts/evaluate_classifier.py "/data/Indian Food Images" --device cuda \\
         --model /path/to/nutrasmart_efficientnetv2s_best.pt \\
         --manifest /path/to/nutrasmart_manifest.csv --output results.csv
 """
@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # Allow running as a plain script from backend/agent without installing the package.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from app.nutrasmart_agent.food_scan.analysis import decode_image  # noqa: E402
 from app.nutrasmart_agent.food_scan.recognition import ClassifierError, build_classifier  # noqa: E402

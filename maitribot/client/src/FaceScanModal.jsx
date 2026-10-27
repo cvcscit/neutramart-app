@@ -3,7 +3,7 @@ import * as api from "./api.js";
 
 const RECORD_SECONDS = 30;
 
-export default function FaceScanModal({ email, onClose, onResult }) {
+export default function FaceScanModal({ onClose, onResult }) {
   const [phase, setPhase] = useState("camera"); // camera | recording | uploading | analyzing | error
   const [secondsLeft, setSecondsLeft] = useState(RECORD_SECONDS);
   const [error, setError] = useState(null);
@@ -89,7 +89,7 @@ export default function FaceScanModal({ email, onClose, onResult }) {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       const file = new File([blob], `facescan-${Date.now()}.webm`, { type: "video/webm" });
 
-      const { url, key } = await api.presign(file.name, file.type, email);
+      const { url, key } = await api.presign(file.name, file.type);
       await api.putToS3(url, file);
 
       setPhase("analyzing");

@@ -1,3 +1,10 @@
+"""Environment-driven settings for the FastAPI edge.
+
+Every tunable the edge uses is read here, once, at import. Region buckets and agent runtime
+ARNs have no defaults: a data region whose bucket (or ARN) is missing is refused with 503
+by ``app.regions.get_data_context`` instead of being routed elsewhere.
+"""
+
 import os
 from dotenv import load_dotenv
 
@@ -38,6 +45,15 @@ ALLOWED_VIDEO_CONTENT_TYPES = {
 }
 
 PRESIGN_EXPIRY_SECONDS = 300
+
+# ─── Timeouts and retries for calls made on the request path ────────────────────────
+# S3 calls go through the regional clients built in app.regions. AWS_MAX_RETRIES counts
+# retries after the first attempt (botocore's ``max_attempts`` inside a Config).
+S3_CONNECT_TIMEOUT_S = float(os.environ.get("S3_CONNECT_TIMEOUT_S", "5"))
+S3_READ_TIMEOUT_S = float(os.environ.get("S3_READ_TIMEOUT_S", "30"))
+AWS_MAX_RETRIES = int(os.environ.get("AWS_MAX_RETRIES", "3"))
+# Fetch of Google's ID-token signing certificates (google-auth's own default is 120 s).
+GOOGLE_CERTS_TIMEOUT_S = float(os.environ.get("GOOGLE_CERTS_TIMEOUT_S", "5"))
 MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 MAX_VIDEO_SIZE_BYTES = 400 * 1024 * 1024  # 400MB, matches BP_measurement/app/server.py
 
@@ -70,13 +86,13 @@ AGENT_LOCAL_TIMEOUT_S = float(os.environ.get("AGENT_LOCAL_TIMEOUT_S", "180"))
 # The default region is used when the country cannot be determined or is unmapped.
 DEFAULT_DATA_REGION = os.environ.get("DEFAULT_DATA_REGION", "us-east-1")
 
-# region -> S3 bucket (bucket physically lives in that region). India reuses the
-# original bucket so existing data stays put.
+# region -> S3 bucket (bucket physically lives in that region). No defaults: an unset
+# bucket makes its region unavailable (503) rather than sending data to another bucket.
 REGION_BUCKETS = {
-    "us-east-1": os.environ.get("BUCKET_US", "sci-neutrasmart-project-us"),
-    "ap-south-1": os.environ.get("BUCKET_IN", "sci-neutrasmart-project"),
-    "ca-central-1": os.environ.get("BUCKET_CA", "sci-neutrasmart-project-ca"),
-    "eu-west-1": os.environ.get("BUCKET_EU", "sci-neutrasmart-project-eu"),
+    "us-east-1": os.environ.get("BUCKET_US", ""),
+    "ap-south-1": os.environ.get("BUCKET_IN", ""),
+    "ca-central-1": os.environ.get("BUCKET_CA", ""),
+    "eu-west-1": os.environ.get("BUCKET_EU", ""),
 }
 
 # region -> AgentCore runtime ARN (each runtime is pinned to its region's bucket +
@@ -99,3 +115,11 @@ COUNTRY_REGION = {"CA": "ca-central-1", "US": "us-east-1", "IN": "ap-south-1"}
 COUNTRY_REGION.update({c: "eu-west-1" for c in _EU_COUNTRIES})
 
 CF_ORIGIN_SECRET = os.environ.get("CF_ORIGIN_SECRET", "")
+
+# Origins OriginVerifyMiddleware lets through without X-Origin-Verify. Empty by default.
+# Set only for the temporary S3 demo build while CloudFront is blocked
+# (documents/MIGRATION_OUTSTANDING_TASKS.md), and unset once CloudFront is restored: the
+# Origin header is client-controlled, so every entry here bypasses the CloudFront gate.
+ORIGIN_VERIFY_EXEMPT_ORIGINS = frozenset(
+    o.strip() for o in os.environ.get("ORIGIN_VERIFY_EXEMPT_ORIGINS", "").split(",") if o.strip()
+)

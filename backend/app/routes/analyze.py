@@ -1,15 +1,19 @@
+"""Food-photo analysis and weekly-summary routes, delegated to the user's regional agent."""
+
 import logging
 import os
 from datetime import datetime, timezone
 
-logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.auth import get_current_user
+from app.auth import get_current_user, user_id_from_email
 from app.agent_client import invoke_agent, AgentError
 from app.regions import get_data_context
 from app.limiter import limiter
+from app.user_keys import is_upload_key
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -39,7 +43,10 @@ def analyze_food(
     if len(body.images) > MAX_IMAGES_PER_REQUEST:
         raise HTTPException(status_code=400, detail=f"Maximum {MAX_IMAGES_PER_REQUEST} images per request.")
 
-    user_id = _user["email"].replace("@", "_at_").replace(".", "_")
+    user_id = user_id_from_email(_user["email"])
+    # Only keys this user's presign produced: the agent reads whatever key it is handed.
+    if not all(is_upload_key(user_id, i.key) for i in body.images):
+        raise HTTPException(status_code=400, detail="Unknown upload. Please upload the photo again.")
 
     # Daily upload limit (cheap regional S3 list before invoking the agent)
     today_prefix = f"users/{user_id}/scans/{datetime.now(timezone.utc).strftime('%Y%m%d')}"
@@ -67,7 +74,7 @@ def analyze_food(
         )
     except AgentError as e:
         logger.error("Analyze failed (region=%s): %s", ctx["region"], e)
-        raise HTTPException(status_code=502, detail=f"Food analysis failed: {e}")
+        raise HTTPException(status_code=502, detail="Food analysis failed. Please try again.")
 
     return analysis
 
@@ -79,13 +86,13 @@ def generate_weekly_summary(
     _user=Depends(get_current_user),
     ctx: dict = Depends(get_data_context),
 ):
-    user_id = _user["email"].replace("@", "_at_").replace(".", "_")
+    user_id = user_id_from_email(_user["email"])
     try:
         invoke_agent({"action": "summary", "user_id": user_id}, agent_arn=ctx["agent_arn"])
         return {"status": "ok"}
     except AgentError as e:
-        logger.error("Weekly summary generation failed (region=%s) for %s: %s", ctx["region"], user_id, e)
-        raise HTTPException(status_code=500, detail=f"Weekly summary generation failed: {e}")
+        logger.error("Weekly summary generation failed (region=%s): %s", ctx["region"], e)
+        raise HTTPException(status_code=502, detail="Weekly summary generation failed. Please try again.")
 
 
 @router.get("/weekly-summary")
@@ -95,7 +102,7 @@ def get_weekly_summary(
     _user=Depends(get_current_user),
     ctx: dict = Depends(get_data_context),
 ):
-    user_id = _user["email"].replace("@", "_at_").replace(".", "_")
+    user_id = user_id_from_email(_user["email"])
     summary_key = f"users/{user_id}/weekly_summary.txt"
 
     try:

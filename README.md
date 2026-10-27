@@ -74,7 +74,8 @@ FOOD_CLASSIFIER_DEVICE=cuda
 **`backend/.env`** (FastAPI; the keys that matter locally):
 ```bash
 AWS_PROFILE=moxa-dev
-DEFAULT_DATA_REGION=us-east-1                 # -> bucket sci-neutrasmart-project-us (BUCKET_US default)
+DEFAULT_DATA_REGION=us-east-1
+BUCKET_US=sci-neutrasmart-project-us          # required: a region without a bucket answers 503
 GOOGLE_CLIENT_ID=<OAuth web client id>        # same as VITE_GOOGLE_CLIENT_ID
 ALLOWED_ORIGINS=http://localhost:5173,http://localhost:5174
 CF_ORIGIN_SECRET=                             # keep EMPTY locally, or every request is rejected
@@ -87,7 +88,8 @@ AGENT_LOCAL_URL=http://localhost:8080         # send agent calls to the local ag
 VITE_API_URL=http://localhost:8000/api
 VITE_GOOGLE_CLIENT_ID=<same OAuth web client id as GOOGLE_CLIENT_ID>
 ```
-Leave `VITE_ORIGIN_VERIFY_SECRET` unset locally.
+The client never sends `X-Origin-Verify`; CloudFront adds it. All variables are listed in
+`backend/.env.example` and `maitribot/client/.env.example`.
 
 ### Start (three terminals, in this order)
 

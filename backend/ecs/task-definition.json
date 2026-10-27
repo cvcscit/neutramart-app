@@ -26,7 +26,8 @@
         { "name": "BUCKET_IN", "value": "<BUCKET_IN>" },
         { "name": "BUCKET_CA", "value": "<BUCKET_CA>" },
         { "name": "BUCKET_EU", "value": "<BUCKET_EU>" },
-        { "name": "ALLOWED_ORIGINS", "value": "https://nutrasmart.in,http://localhost:5173,http://localhost:5174" }
+        { "name": "ALLOWED_ORIGINS", "value": "https://nutrasmart.in,http://localhost:5173,http://localhost:5174" },
+        { "name": "ORIGIN_VERIFY_EXEMPT_ORIGINS", "value": "http://maitribot-demo-ui.s3-website.ap-south-1.amazonaws.com" }
       ],
       "secrets": [
         {
@@ -61,7 +62,7 @@
       "healthCheck": {
         "command": [
           "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=4)\" || exit 1"
         ],
         "interval": 30,
         "timeout": 5,
