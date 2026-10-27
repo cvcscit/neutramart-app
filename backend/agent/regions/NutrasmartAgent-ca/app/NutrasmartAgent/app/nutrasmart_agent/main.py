@@ -6,58 +6,69 @@ One runtime, three actions routed by the ``action`` field of the invocation payl
     {"action": "chat",    "user_id": ..., "message": ..., "history": [...]}  -> {"reply": str}
     {"action": "summary", "user_id": ...}                                    -> {"status": "ok"}
     {"action": "analyze", "user_id": ..., "images": [{"key", "content_type"}]} -> analysis JSON
-    {"action": "face_scan", "user_id": ..., "key": "users/.../scans/<id>.mp4"} -> {"heart_rate": {...}}
+    {"action": "face_scan", "user_id": ..., "key": "users/.../uploads/<id>.webm"} -> {"heart_rate", "bp", "spo2"}
 
 Identity is never taken from the client: the FastAPI edge validates the Google ID token,
-derives ``user_id`` and passes it here. This agent trusts ``user_id`` from the payload only.
+derives ``user_id`` and passes it here. This agent trusts ``user_id`` from the payload only,
+and refuses any object key in the payload that is not under ``users/{user_id}/``.
 
-Data model (S3 bucket ``sci-neutrasmart-project`` in ap-south-1):
-    users/{user_id}/scans/{ts}.json      food-analysis records (the knowledge base)
-    users/{user_id}/weekly_summary.txt   generated eating summary
-    users/{user_id}/health_profile.json  optional health profile
+Data model (the runtime region's bucket, ``S3_BUCKET_NAME``):
+    users/{user_id}/uploads/{id}.{ext}      meal photos and face-scan videos (browser uploads)
+    users/{user_id}/scans/{ts}.json         food-analysis records (the knowledge base)
+    users/{user_id}/vitals_scans/{ts}.json  face-scan results
+    users/{user_id}/weekly_summary.txt      generated eating summary
+    users/{user_id}/health_profile.json     optional health profile
 
 ``analyze`` and ``face_scan`` are each implemented by their own self-contained subpackage
 (``food_scan/``, ``face_scan_biomarkers/``) -- separate workstreams, each owning its own
 settings/AWS clients/model cache so they can keep evolving independently of this module
-and of each other. See their respective __init__.py files.
+and of each other. See their respective __init__.py files. Chat and summary use the
+settings and AWS clients built by ``food_scan`` (``food_scan/settings.py`` holds the
+agent-wide model, bucket, region and timeout settings), created on the first request.
 """
 
+import hashlib
 import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
-
-import boto3
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from strands import Agent, tool
 from strands.models import BedrockModel
 
+from .face_scan_biomarkers.analysis import analyze_face_scan
+from .face_scan_biomarkers.services import BiomarkerServices
+from .face_scan_biomarkers.services import build_services as build_biomarker_services
+from .face_scan_biomarkers.settings import load_settings as load_biomarker_settings
 from .food_scan.analysis import ImageRef, analyze_food_images
 from .food_scan.services import AgentServices, build_services
 from .food_scan.settings import load_settings as load_food_scan_settings
 
-from .face_scan_biomarkers.analysis import analyze_face_scan
-from .face_scan_biomarkers.services import BiomarkerServices, build_services as build_biomarker_services
-from .face_scan_biomarkers.settings import load_settings as load_biomarker_settings
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nutrasmart_agent")
 
-# ─── Config (env-driven, matching the existing agentcore_experiments pattern) ────────
-BEDROCK_MODEL_ID = os.environ.get(
-    "BEDROCK_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-)
-BEDROCK_REGION = os.environ.get("BEDROCK_REGION", os.environ.get("AWS_REGION", "us-east-1"))
-S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "sci-neutrasmart-project")
-S3_REGION = os.environ.get("S3_REGION", "ap-south-1")  # bucket lives in Mumbai
-
-# S3 client targets the bucket's region; Bedrock uses the runtime region.
-s3 = boto3.client("s3", region_name=S3_REGION)
-bedrock = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
-
 app = BedrockAgentCoreApp()
+
+
+class InvalidRequest(ValueError):
+    """The invocation payload is malformed or names an object outside the caller's data."""
+
+
+def _require_own_key(user_id: str, key: str) -> str:
+    """Return ``key`` if it names an object under ``users/{user_id}/``; raise InvalidRequest otherwise.
+
+    The edge builds keys from the verified identity, but the agent reads whatever key it is
+    handed, so the prefix is enforced here too. ``..`` segments are refused outright.
+    """
+    if not key.startswith(f"users/{user_id}/") or ".." in key.split("/"):
+        raise InvalidRequest("Object key is outside the user's data.")
+    return key
+
+
+def _log_id(user_id: str) -> str:
+    """Short, stable stand-in for ``user_id`` in log lines (the id is derived from the e-mail)."""
+    return hashlib.sha256(user_id.encode()).hexdigest()[:12]
 
 WEEKLY_SUMMARY_PROMPT = (
     "You are a nutrition and dietary advisor. Below are the food analysis records "
@@ -140,9 +151,10 @@ def get_recent_scans(user_id: str, days: int = 60) -> str:
     Returns a formatted text block of dated records with calories, macros and
     micronutrients — the knowledge base for summaries and chat.
     """
+    s3, bucket = _user_store()
     prefix = f"users/{user_id}/scans/"
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    response = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
+    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
     if "Contents" not in response:
         return "No food scans found for this user."
 
@@ -154,7 +166,7 @@ def get_recent_scans(user_id: str, days: int = 60) -> str:
         except ValueError:
             continue
         if scan_time >= cutoff:
-            scan_data = s3.get_object(Bucket=S3_BUCKET_NAME, Key=obj["Key"])
+            scan_data = s3.get_object(Bucket=bucket, Key=obj["Key"])
             scans.append(json.loads(scan_data["Body"].read()))
 
     if not scans:
@@ -181,9 +193,10 @@ def get_recent_scans(user_id: str, days: int = 60) -> str:
 @tool
 def get_health_profile(user_id: str) -> str:
     """Fetch the user's health profile (age, conditions, allergies, goals) if it exists."""
+    s3, bucket = _user_store()
     try:
         response = s3.get_object(
-            Bucket=S3_BUCKET_NAME, Key=f"users/{user_id}/health_profile.json"
+            Bucket=bucket, Key=f"users/{user_id}/health_profile.json"
         )
         profile = json.loads(response["Body"].read())
     except Exception:
@@ -195,9 +208,10 @@ def get_health_profile(user_id: str) -> str:
 @tool
 def get_eating_summary(user_id: str) -> str:
     """Fetch the user's most recently generated 2-month eating summary, if any."""
+    s3, bucket = _user_store()
     try:
         response = s3.get_object(
-            Bucket=S3_BUCKET_NAME, Key=f"users/{user_id}/weekly_summary.txt"
+            Bucket=bucket, Key=f"users/{user_id}/weekly_summary.txt"
         )
         return response["Body"].read().decode("utf-8")
     except Exception:
@@ -205,8 +219,9 @@ def get_eating_summary(user_id: str) -> str:
 
 
 def _save_summary(user_id: str, text: str) -> None:
+    s3, bucket = _user_store()
     s3.put_object(
-        Bucket=S3_BUCKET_NAME,
+        Bucket=bucket,
         Key=f"users/{user_id}/weekly_summary.txt",
         Body=text,
         ContentType="text/plain",
@@ -216,8 +231,9 @@ def _save_summary(user_id: str, text: str) -> None:
 def _save_scan(user_id: str, analysis: dict, image_keys: list) -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     scan_key = f"users/{user_id}/scans/{timestamp}.json"
+    s3, bucket = _user_store()
     s3.put_object(
-        Bucket=S3_BUCKET_NAME,
+        Bucket=bucket,
         Key=scan_key,
         Body=json.dumps({**analysis, "timestamp": timestamp, "image_keys": image_keys}),
         ContentType="application/json",
@@ -230,8 +246,9 @@ def _save_vitals_scan(user_id: str, result: dict, video_key: str) -> None:
     scans since these are a different kind of record (heart_rate/bp/spo2, not nutrition)."""
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     scan_key = f"users/{user_id}/vitals_scans/{timestamp}.json"
+    s3, bucket = _user_store()
     s3.put_object(
-        Bucket=S3_BUCKET_NAME,
+        Bucket=bucket,
         Key=scan_key,
         Body=json.dumps({**result, "timestamp": timestamp, "video_key": video_key}),
         ContentType="application/json",
@@ -241,26 +258,38 @@ def _save_vitals_scan(user_id: str, result: dict, video_key: str) -> None:
 # ─── Action handlers ─────────────────────────────────────────────────────────────────
 @lru_cache(maxsize=1)
 def _food_scan_services() -> AgentServices:
-    """Build food_scan's own settings, AWS clients and lazy classifier, once per
-    container. Fully independent of this module's s3/bedrock clients above."""
+    """Build the agent settings, AWS clients (with timeouts) and lazy classifier, once per
+    container. Chat, summary and the scan writers use its user-data S3 client and Bedrock."""
     return build_services(load_food_scan_settings())
+
+
+def _user_store() -> tuple[object, str]:
+    """The S3 client and bucket holding this runtime's user data."""
+    services = _food_scan_services()
+    return services.s3, services.settings.s3_bucket_name
 
 
 @lru_cache(maxsize=1)
 def _biomarker_services() -> BiomarkerServices:
-    """Build face_scan_biomarkers' own settings, S3 client and model cache, once per
-    container. Fully independent of this module's s3/bedrock clients above."""
+    """Build face_scan_biomarkers' own settings, model-bucket S3 client and model cache,
+    once per container."""
     return build_biomarker_services(load_biomarker_settings())
-
 
 
 def _model() -> BedrockModel:
     # Without max_tokens, strands' BedrockModel omits "maxTokens" from the Converse
     # request entirely (see inferenceConfig construction in strands/models/bedrock.py)
     # and Bedrock falls back to its own low provider default -- responses were visibly
-    # cut off mid-sentence in chat. _handle_summary already sets 2048 explicitly for the
-    # same reason; match it here.
-    return BedrockModel(model_id=BEDROCK_MODEL_ID, region_name=BEDROCK_REGION, max_tokens=2048)
+    # cut off mid-sentence in chat. The client config carries the same connect/read
+    # timeouts and retries as food_scan's Bedrock client.
+    services = _food_scan_services()
+    settings = services.settings
+    return BedrockModel(
+        model_id=settings.bedrock_model_id,
+        region_name=settings.bedrock_region,
+        max_tokens=settings.chat_max_tokens,
+        boto_client_config=services.bedrock_config,
+    )
 
 
 def _handle_chat(payload: dict) -> dict:
@@ -293,21 +322,25 @@ def _handle_summary(payload: dict) -> dict:
     health_section = "" if profile.startswith("No health profile") else profile + "\n\n"
 
     full_prompt = WEEKLY_SUMMARY_PROMPT.format(health_profile_section=health_section) + records
-    resp = bedrock.converse(
-        modelId=BEDROCK_MODEL_ID,
+    services = _food_scan_services()
+    resp = services.bedrock.converse(
+        modelId=services.settings.bedrock_model_id,
         messages=[{"role": "user", "content": [{"text": full_prompt}]}],
-        inferenceConfig={"maxTokens": 2048},
+        inferenceConfig={"maxTokens": services.settings.summary_max_tokens},
     )
     summary_text = resp["output"]["message"]["content"][0]["text"]
     _save_summary(user_id, summary_text)
-    logger.info("Summary saved for %s", user_id)
+    logger.info("Summary saved for user %s", _log_id(user_id))
     return {"status": "ok"}
 
 
 def _handle_analyze(payload: dict) -> dict:
     user_id = payload["user_id"]
     images = payload.get("images") or []
-    refs = [ImageRef(key=img["key"], content_type=img.get("content_type", "")) for img in images]
+    refs = [
+        ImageRef(key=_require_own_key(user_id, img["key"]), content_type=img.get("content_type", ""))
+        for img in images
+    ]
 
     services = _food_scan_services()
     analysis = analyze_food_images(
@@ -320,7 +353,7 @@ def _handle_analyze(payload: dict) -> dict:
     try:
         _save_scan(user_id, analysis, [ref.key for ref in refs])
     except Exception as e:  # don't fail the request if the scan save fails
-        logger.warning("Scan save failed for %s: %s", user_id, e)
+        logger.warning("Scan save failed for user %s: %s", _log_id(user_id), e)
     return analysis
 
 
@@ -330,12 +363,15 @@ def _handle_face_scan(payload: dict) -> dict:
     user_id = payload["user_id"]
     key = payload.get("key")
     if not key:
-        raise ValueError("Missing video key in payload.")
-    result = analyze_face_scan(key, user_s3=s3, user_bucket=S3_BUCKET_NAME, services=_biomarker_services())
+        raise InvalidRequest("Missing video key in payload.")
+    s3, bucket = _user_store()
+    result = analyze_face_scan(
+        _require_own_key(user_id, key), user_s3=s3, user_bucket=bucket, services=_biomarker_services()
+    )
     try:
         _save_vitals_scan(user_id, result, key)
     except Exception as e:  # don't fail the request if the scan save fails
-        logger.warning("Vitals scan save failed for %s: %s", user_id, e)
+        logger.warning("Vitals scan save failed for user %s: %s", _log_id(user_id), e)
     return result
 
 

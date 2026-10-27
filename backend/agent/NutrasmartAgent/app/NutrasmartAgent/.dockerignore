@@ -1,0 +1,17 @@
+# Build context of the agent Dockerfile (backend/agent/ and each AgentCore project's
+# app/NutrasmartAgent/, its codeLocation), which copies only requirements*.txt and app/.
+# Keep local config, virtualenvs, tests and developer tools out of the context and image.
+.env
+.env.*
+venv*/
+.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+app/**/tests/
+app/**/scripts/
+tests/
+models/
+NutrasmartAgent/
+regions/
+*.md

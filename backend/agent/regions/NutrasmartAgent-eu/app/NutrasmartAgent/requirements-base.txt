@@ -1,11 +1,11 @@
 # Runtime dependencies shared by the CPU (production) and GPU (local dev) installs.
 bedrock-agentcore>=0.1.0
 strands-agents>=0.1.0
-boto3>=1.40.0
+boto3==1.43.119
 Pillow>=10.0.0
 
-# Face-scan (heart-rate/BP/SpO2) dependencies -- see app/dsv/, vendored from the
-# biomarker-processing BP_measurement repo. mediapipe's linux_aarch64 wheel
+# Face-scan (heart-rate/BP/SpO2) dependencies -- see app/nutrasmart_agent/face_scan_biomarkers/dsv/,
+# vendored from the biomarker-processing BP_measurement repo. mediapipe's linux_aarch64 wheel
 # availability must be verified against this image's exact Python version
 # before relying on this in production (see Dockerfile comment).
 numpy==2.0.2
@@ -13,5 +13,7 @@ scipy==1.13.1
 pandas==2.3.3
 scikit-learn==1.6.1
 joblib==1.5.3
-opencv-python-headless
+# Pinned to the build smoke-tested with mediapipe 0.10.14 + numpy 2.0.2 (x86_64, Python 3.12,
+# 2026-10-26). mediapipe also pulls in opencv-contrib-python, so two cv2 builds are installed.
+opencv-python-headless==5.0.0.93
 mediapipe==0.10.14

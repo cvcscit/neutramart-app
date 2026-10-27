@@ -63,6 +63,7 @@ class AgentSettings:
     max_images_per_request: int
     analyze_max_tokens: int
     summary_max_tokens: int
+    chat_max_tokens: int
 
     bedrock_connect_timeout_s: float
     bedrock_read_timeout_s: float
@@ -159,6 +160,8 @@ def load_settings(env: Mapping[str, str] | None = None) -> AgentSettings:
         max_images_per_request=_get_int(env, "MAX_IMAGES_PER_REQUEST", 5, minimum=1),
         analyze_max_tokens=_get_int(env, "ANALYZE_MAX_TOKENS", 4096, minimum=1),
         summary_max_tokens=_get_int(env, "SUMMARY_MAX_TOKENS", 2048, minimum=1),
+        # Strands omits maxTokens unless set, and Bedrock's provider default cut replies short.
+        chat_max_tokens=_get_int(env, "CHAT_MAX_TOKENS", 2048, minimum=1),
         bedrock_connect_timeout_s=_get_float(env, "BEDROCK_CONNECT_TIMEOUT_S", 10.0),
         bedrock_read_timeout_s=_get_float(env, "BEDROCK_READ_TIMEOUT_S", 120.0),
         s3_connect_timeout_s=_get_float(env, "S3_CONNECT_TIMEOUT_S", 5.0),

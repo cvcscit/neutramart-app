@@ -12,6 +12,7 @@ import tempfile
 from dataclasses import dataclass, field
 
 import boto3
+from botocore.config import Config
 
 from .dsv.heart_rate import HRGate
 from .settings import BiomarkerSettings
@@ -72,5 +73,11 @@ class BiomarkerServices:
 
 
 def build_services(settings: BiomarkerSettings) -> BiomarkerServices:
-    s3 = boto3.client("s3", region_name=settings.region)
+    """Create the model-bucket S3 client, with explicit timeouts, and the lazy model cache."""
+    config = Config(
+        connect_timeout=settings.s3_connect_timeout_s,
+        read_timeout=settings.s3_read_timeout_s,
+        retries={"max_attempts": settings.max_retries, "mode": "standard"},
+    )
+    s3 = boto3.client("s3", region_name=settings.region, config=config)
     return BiomarkerServices(settings=settings, models=ModelCache(settings, s3))

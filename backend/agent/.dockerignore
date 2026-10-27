@@ -1,4 +1,5 @@
-# Build context for backend/agent/Dockerfile, which copies only requirements*.txt and app/.
+# Build context of the agent Dockerfile (backend/agent/ and each AgentCore project's
+# app/NutrasmartAgent/, its codeLocation), which copies only requirements*.txt and app/.
 # Keep local config, virtualenvs, tests and developer tools out of the context and image.
 .env
 .env.*
