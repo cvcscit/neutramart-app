@@ -9,18 +9,22 @@ when the first one's answer is not good enough.
   the *lowest* top-1 confidence across images. It is good enough when that reaches
   ``FOOD_CLASSIFIER_THRESHOLD``. Its dish names then go to a cheap text-only LLM call
   that estimates nutrition.
-* **Vision LLM** (``source = "llm"``): the images go to the LLM, which self-reports a
-  ``confidence`` in [0, 1]. It is good enough when that reaches
-  ``LLM_CONFIDENCE_THRESHOLD``. A reply with no JSON, "No food detected", or a missing
-  confidence scores 0.
+* **Vision LLM** (``source = "llm"``): the images go to the LLM, which first decides
+  whether they show food (``is_food``) and self-reports a ``confidence`` in [0, 1]. A
+  reply with ``is_food: false``, "No food detected", no JSON, or a missing confidence
+  scores 0.
 
-When the first recognizer is not good enough, the fallback runs. If the fallback also
-misses its threshold, the higher score wins (ties go to the first recognizer). With no
-classifier configured, or if it fails, the vision LLM result is used.
+``classifier_first`` (default): if the classifier reaches its threshold its answer is
+used; otherwise (or if it is missing or fails) the vision LLM decides, whatever its score.
+``llm_first``: the LLM answer is used if it reaches ``LLM_CONFIDENCE_THRESHOLD``;
+otherwise the classifier runs and the higher score wins (ties go to the LLM).
+
+In both orders a "not food" verdict from the LLM is final: the result is the no-food
+shape (``is_food: false``, nutrition ``N/A``), never a classifier guess.
 
 Both paths return the same JSON shape plus a ``recognition`` block that records the
-order, which path won, both scores and the classifier's predictions, so accuracy and
-fallback rate can be audited from the saved scans.
+order, which path won, ``is_food``, both scores and the classifier's predictions, so
+accuracy and fallback rate can be audited from the saved scans.
 """
 
 from __future__ import annotations
@@ -162,10 +166,28 @@ def _classifier_score(results: list[ClassificationResult]) -> float:
     return min(result.top.confidence for result in results)
 
 
+def _llm_says_no_food(analysis: dict) -> bool:
+    """True when the LLM judged the image not to be food (or gave no usable analysis)."""
+    is_food = analysis.get("is_food")
+    if is_food is False or (isinstance(is_food, str) and is_food.strip().lower() == "false"):
+        return True
+    description = analysis.get("description")
+    return isinstance(description, str) and description.strip().lower() == NO_FOOD_DESCRIPTION.lower()
+
+
+def _as_no_food(analysis: dict) -> dict:
+    """Normalize a "not food" reply so no nutrition or dishes leak through."""
+    return {key: "N/A" for key in _TOP_LEVEL_KEYS} | {
+        "recommendation": analysis.get("recommendation", "N/A"),
+        "description": NO_FOOD_DESCRIPTION,
+        "dishes": [],
+        "micronutrients": {key: "N/A" for key in MICRONUTRIENT_KEYS},
+    }
+
+
 def _llm_score(analysis: dict) -> float:
     """The LLM's self-reported confidence, clamped to [0, 1]; 0 for no food or no score."""
-    description = analysis.get("description")
-    if isinstance(description, str) and description.strip().lower() == NO_FOOD_DESCRIPTION.lower():
+    if _llm_says_no_food(analysis):
         return 0.0
     try:
         confidence = float(analysis.get("confidence"))
@@ -232,6 +254,10 @@ def _analyze_with_vision(images: list[Image.Image], bedrock, settings: AgentSett
 def _vision_attempt(images: list[Image.Image], bedrock, settings: AgentSettings) -> Attempt:
     analysis = _analyze_with_vision(images, bedrock, settings)
     score = _llm_score(analysis)
+    is_food = not _llm_says_no_food(analysis)
+    if not is_food:
+        analysis = _as_no_food(analysis)
+    analysis["is_food"] = is_food
     analysis["confidence"] = score
     return Attempt(RecognitionSource.LLM, analysis, score)
 
@@ -240,6 +266,7 @@ def _labels_attempt(
     results: list[ClassificationResult], score: float, bedrock, settings: AgentSettings
 ) -> Attempt:
     analysis = _analyze_with_labels(results, bedrock, settings)
+    analysis["is_food"] = True
     analysis["confidence"] = score
     return Attempt(RecognitionSource.CLASSIFIER, analysis, score)
 
@@ -248,26 +275,22 @@ def _run_classifier_first(
     images: list[Image.Image], bedrock, classifier: FoodClassifier | None, settings: AgentSettings
 ) -> Outcome:
     results = _classify_all(classifier, images) if classifier is not None else None
-    if results is None:
-        vision = _vision_attempt(images, bedrock, settings)
-        return Outcome(vision, None, vision.score, fallback_used=classifier is not None)
+    if results is not None:
+        classifier_score = _classifier_score(results)
+        if classifier_score >= settings.classifier.threshold:
+            return Outcome(_labels_attempt(results, classifier_score, bedrock, settings), results, None, False)
 
-    classifier_score = _classifier_score(results)
-    if classifier_score >= settings.classifier.threshold:
-        return Outcome(_labels_attempt(results, classifier_score, bedrock, settings), results, None, False)
-
+    # Classifier missing, failed or not confident: the vision LLM decides, including "not food".
     vision = _vision_attempt(images, bedrock, settings)
-    if vision.score >= settings.llm_confidence_threshold or vision.score > classifier_score:
-        return Outcome(vision, results, vision.score, fallback_used=True)
-    labels = _labels_attempt(results, classifier_score, bedrock, settings)
-    return Outcome(labels, results, vision.score, fallback_used=False)
+    return Outcome(vision, results, vision.score, fallback_used=classifier is not None)
 
 
 def _run_llm_first(
     images: list[Image.Image], bedrock, classifier: FoodClassifier | None, settings: AgentSettings
 ) -> Outcome:
     vision = _vision_attempt(images, bedrock, settings)
-    if vision.score >= settings.llm_confidence_threshold or classifier is None:
+    no_food = not vision.analysis["is_food"]
+    if vision.score >= settings.llm_confidence_threshold or classifier is None or no_food:
         return Outcome(vision, None, vision.score, fallback_used=False)
 
     results = _classify_all(classifier, images)
@@ -291,6 +314,7 @@ def _recognition_block(outcome: Outcome, settings: AgentSettings) -> dict:
     return {
         "source": outcome.chosen.source.value,
         "order": settings.recognition_order.value,
+        "is_food": outcome.chosen.analysis["is_food"],
         "threshold": settings.classifier.threshold,
         "llm_threshold": settings.llm_confidence_threshold,
         "llm_confidence": outcome.llm_score,
@@ -322,6 +346,7 @@ def analyze_food_images(
     logger.info("food_analysis %s", json.dumps({
         "source": outcome.chosen.source.value,
         "order": settings.recognition_order.value,
+        "is_food": outcome.chosen.analysis["is_food"],
         "fallback_used": outcome.fallback_used,
         "images": len(images),
         "top": [

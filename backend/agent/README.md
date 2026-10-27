@@ -32,19 +32,22 @@ Two recognizers, and `FOOD_RECOGNITION_ORDER` picks which runs first; the other 
 
 - **Classifier**: classify each image; score = lowest top-1 confidence across images; good enough when
   ≥ `FOOD_CLASSIFIER_THRESHOLD`. The dish names then go to a text-only LLM call for nutrition.
-- **Vision LLM**: images go to the LLM, which self-reports `confidence` (0–1); good enough when
-  ≥ `LLM_CONFIDENCE_THRESHOLD`. No JSON, "No food detected" or a missing confidence scores 0.
+- **Vision LLM**: images go to the LLM, which first decides whether they show food (`is_food`) and
+  self-reports `confidence` (0–1); good enough when ≥ `LLM_CONFIDENCE_THRESHOLD`. `is_food: false`,
+  no JSON, "No food detected" or a missing confidence scores 0.
+- **"Not food" is final**: in either order, when the LLM says the photo is not food the result is the
+  no-food shape (`is_food: false`, description `No food detected`, nutrition `N/A`, no dishes), never
+  a classifier guess. The UI shows its "couldn't find food" card for it.
 
 ```
 classifier_first (default):
-S3 images ─► classifier ─► good enough? ─yes─► text-only LLM (nutrition for the named dishes)
-                 │ no                                  ▲
-                 ▼                                     │ classifier scored higher
-             vision LLM ─► good enough? ─no──► compare scores (tie → classifier)
-                               │ yes / LLM scored higher ─► vision result
+S3 images ─► classifier ─► ≥ FOOD_CLASSIFIER_THRESHOLD (0.70)? ─yes─► text-only LLM (nutrition for the named dishes)
+                 │ no
+                 ▼
+             vision LLM ─► vision result, whatever its confidence (food or "not food")
 
 llm_first:
-S3 images ─► vision LLM ─► good enough? ─yes─► vision result (classifier never runs)
+S3 images ─► vision LLM ─► good enough, or "not food"? ─yes─► vision result (classifier never runs)
                  │ no
                  ▼
              classifier ─► good enough, or scored higher than the LLM? ─yes─► text-only LLM
@@ -59,8 +62,8 @@ in either order.
   EfficientNetV2-S backend, S3 model cache, backend registry), `prompts.py`, `settings.py`,
   `services.py`. `main.py` only calls `food_scan.analysis.analyze_food_images(...)`.
 - Every result carries a top-level `confidence` (the winning recognizer's score) and
-  `recognition: {source: "classifier"|"llm", order, threshold, llm_threshold, llm_confidence,
-  fallback_used, predictions}`, which is saved with the scan so fallback rate and accuracy can be
+  `recognition: {source: "classifier"|"llm", order, is_food, threshold, llm_threshold, llm_confidence,
+  fallback_used, models, predictions}`, which is saved with the scan so fallback rate and accuracy can be
   audited. `fallback_used` is true when the first recognizer fell short and the fallback's answer won.
 - The model loads lazily on the first `analyze` request per container (chat/summary never load
   torch). If it cannot be loaded, the error is logged and the agent uses the vision LLM only.
@@ -103,7 +106,7 @@ The runtime role needs `s3:GetObject` on every model object.
 | `FOOD_CLASSIFIER_BACKEND` | `efficientnet_v2_s` |
 | `FOOD_CLASSIFIER_MODELS` | — (required when enabled; comma-separated `name=uri`, each `s3://…` or a local path) |
 | `FOOD_CLASSIFIER_MODEL_REGION` | `us-east-1` (region of the model bucket) |
-| `FOOD_CLASSIFIER_THRESHOLD` | `0.60` |
+| `FOOD_CLASSIFIER_THRESHOLD` | `0.70` |
 | `FOOD_CLASSIFIER_TOP_K` / `FOOD_CLASSIFIER_NUM_THREADS` | `5` / `2` |
 | `FOOD_CLASSIFIER_CACHE_DIR` | `/tmp/food_models` |
 | `FOOD_CLASSIFIER_DEVICE` | `cpu` (`cuda` for local GPU runs only; AgentCore has no GPU) |
@@ -130,14 +133,14 @@ venv_agent/bin/python -m pytest -q app tests
 
 This runs the cuisine-model ensemble on local images through the production code path. For each
 image it prints the winning model, its top-k predictions, and whether the result would take the
-classifier route or fall back to the vision LLM (`FOOD_CLASSIFIER_THRESHOLD`, default 0.60).
+classifier route or fall back to the vision LLM (`FOOD_CLASSIFIER_THRESHOLD`, default 0.70).
 
 ```bash
 venv_agent/bin/python app/nutrasmart_agent/food_scan/scripts/classify_images.py photo1.jpg photo2.png
 ```
 
 ```
-chinese_Screenshot 2026-10-04 232949.png: model=chinese -> classifier (threshold 0.60)
+chinese_Screenshot 2026-10-04 232949.png: model=chinese -> classifier (threshold 0.70)
      91.1%  Braised Pork
       2.5%  Dongpo Pork
      ...

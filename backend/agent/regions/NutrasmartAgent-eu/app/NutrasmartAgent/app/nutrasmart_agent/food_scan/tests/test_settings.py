@@ -10,7 +10,7 @@ from app.nutrasmart_agent.food_scan.settings import ClassifierModel, Recognition
 def test_defaults_keep_classifier_disabled():
     settings = load_settings({})
     assert settings.classifier.enabled is False
-    assert settings.classifier.threshold == 0.60
+    assert settings.classifier.threshold == 0.70
     assert settings.classifier.backend == "efficientnet_v2_s"
 
 

@@ -67,7 +67,7 @@ FOOD_RECOGNITION_ORDER=classifier_first
 LLM_CONFIDENCE_THRESHOLD=0.60
 FOOD_CLASSIFIER_ENABLED=true
 FOOD_CLASSIFIER_MODELS=chinese=/home/mario/data/welness360/s3/food-detection-model/chinese/nutrasmart_efficientnetv2s_best.pt,indian=/home/mario/data/welness360/s3/food-detection-model/indian/nutrasmart_efficientnetv2s_best.pt,thai=/home/mario/data/welness360/s3/food-detection-model/thai/thai_nutrasmart_efficientnetv2s_best.pt
-FOOD_CLASSIFIER_THRESHOLD=0.60
+FOOD_CLASSIFIER_THRESHOLD=0.70
 FOOD_CLASSIFIER_DEVICE=cuda
 ```
 
@@ -126,10 +126,12 @@ curl -s localhost:8000/health
    `/api/analyze` → local agent → classifier ensemble → Bedrock nutrition call → nutrition card.
 3. The agent log has one line per scan:
    ```
-   food_analysis {"source": "classifier", "top": [{"model": "indian", "food_id": "aloo_gobi", "confidence": 0.87}], ...}
+   food_analysis {"source": "classifier", "is_food": true, "top": [{"model": "indian", "food_id": "aloo_gobi", "confidence": 0.87}], ...}
    ```
-   - `source`: `classifier` if the winning cuisine model cleared `FOOD_CLASSIFIER_THRESHOLD`,
-     `llm` if it fell back to the vision LLM.
+   - `source`: `classifier` if the winning cuisine model cleared `FOOD_CLASSIFIER_THRESHOLD` (0.70),
+     `llm` if the vision LLM decided.
+   - `is_food`: `false` when the LLM judged the photo not to be food. The UI then shows the
+     "couldn't find food" card. Try a screenshot or a selfie to see it.
    - `model`: which cuisine model won.
 
    The same data is saved with the scan under `recognition`.
