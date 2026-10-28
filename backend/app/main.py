@@ -60,7 +60,8 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    # "deployed_via" bumped to prove the GitHub Actions CI/CD pipeline shipped this build.
+    return {"status": "healthy", "deployed_via": "github-actions"}
 
 
 app.include_router(upload_router, prefix="/api")
