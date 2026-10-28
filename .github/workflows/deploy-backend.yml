@@ -34,6 +34,16 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Login to ECR Public
+        # The Dockerfile's FROM line pulls the base image from ECR Public (AWS's mirror
+        # of Docker Hub). Anonymous pulls from GitHub's shared runner IPs hit ECR
+        # Public's anonymous rate limit fast ("429 Too Many Requests"); logging in first
+        # gets the much higher authenticated quota. ECR Public auth is always us-east-1,
+        # regardless of which region the image is ultimately pushed to.
+        uses: aws-actions/amazon-ecr-login@v2
+        with:
+          registry-type: public
+
       - name: Build and push image
         working-directory: backend
         env:
