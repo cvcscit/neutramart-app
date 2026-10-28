@@ -37,5 +37,25 @@ jobs:
           role-to-assume: arn:aws:iam::792207721590:role/github-actions-nutrasmart-frontend-deploy
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Fetch build-time config from SSM
+        # Vite inlines these into the bundle at build time (import.meta.env.VITE_*), so
+        # they must exist as real env vars before `npm run build` runs. They're pulled
+        # from SSM rather than GitHub Secrets so there's one source of truth shared with
+        # the rest of the AWS-side config (agent ARNs, origin secret, etc. already live
+        # there) and no values are duplicated into GitHub.
+        run: |
+          fetch() { aws ssm get-parameter --name "$1" --with-decryption --query Parameter.Value --output text --region ${{ env.AWS_REGION }}; }
+
+          CLIENT_ID=$(fetch /nutrasmart/google-client-id)
+          ORIGIN_SECRET=$(fetch /nutrasmart/cf-origin-secret)
+          SHENAI_KEY=$(fetch /nutrasmart/shenai-api-key)
+
+          echo "::add-mask::$ORIGIN_SECRET"
+          echo "::add-mask::$SHENAI_KEY"
+
+          echo "VITE_GOOGLE_CLIENT_ID=$CLIENT_ID" >> "$GITHUB_ENV"
+          echo "VITE_ORIGIN_VERIFY_SECRET=$ORIGIN_SECRET" >> "$GITHUB_ENV"
+          echo "VITE_SHENAI_API_KEY=$SHENAI_KEY" >> "$GITHUB_ENV"
+
       - name: Build and deploy
         run: ./deploy.sh
