@@ -5,6 +5,7 @@ on:
     branches: [feature/w360-full]
     paths:
       - "maitribot/client/**"
+  workflow_dispatch: {}   # lets you re-run manually from the Actions tab without a dummy commit
 
 permissions:
   id-token: write   # required to mint the OIDC token for AssumeRoleWithWebIdentity

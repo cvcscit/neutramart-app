@@ -5,6 +5,11 @@ set -euo pipefail
 # connections: hashed assets (filename changes on every rebuild) are cached by the
 # browser for a year and never re-validated; the two HTML entry points always
 # revalidate since they're what points at the current asset hashes.
+#
+# Needs VITE_GOOGLE_CLIENT_ID / VITE_ORIGIN_VERIFY_SECRET / VITE_SHENAI_API_KEY in the
+# environment before `npm run build` runs (from .env.production locally, or from SSM via
+# the "Fetch build-time config from SSM" step in deploy-frontend.yml in CI) -- without
+# them the build still succeeds but ships a bundle with Google Sign-In broken.
 
 # Locally: defaults to the nutrasmart profile. In CI (CI=true, set by GitHub Actions):
 # leave AWS_PROFILE unset so the OIDC-assumed role credentials already in the
