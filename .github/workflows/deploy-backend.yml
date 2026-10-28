@@ -1,0 +1,58 @@
+name: Deploy backend to ECS
+
+on:
+  push:
+    branches: [feature/w360-full]
+    paths:
+      - "backend/**"
+      - "!backend/agent/**"
+      - "!backend/ecs/**"
+
+permissions:
+  id-token: write   # required to mint the OIDC token for AssumeRoleWithWebIdentity
+  contents: read
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_REPO: nutrasmart-backend
+  ECS_CLUSTER: nutrasmart-cluster
+  ECS_SERVICE: nutrasmart-backend-service
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::792207721590:role/github-actions-nutrasmart-backend-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        working-directory: backend
+        env:
+          ECR_URI: ${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPO }}
+        run: |
+          TAG=$(git rev-parse --short HEAD)
+          docker build --platform linux/amd64 -t "$ECR_URI:$TAG" -t "$ECR_URI:latest" .
+          docker push "$ECR_URI:$TAG"
+          docker push "$ECR_URI:latest"
+
+      - name: Force new ECS deployment
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment \
+            --region "$AWS_REGION" > /dev/null
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --region "$AWS_REGION"
