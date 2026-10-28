@@ -60,8 +60,9 @@ app.add_middleware(
 
 @app.get("/health")
 def health_check():
-    # "deployed_via" bumped to prove the GitHub Actions CI/CD pipeline shipped this build.
-    return {"status": "healthy", "deployed_via": "github-actions"}
+    # "deployed_via" proves the GitHub Actions CI/CD pipeline shipped this build (v2, after
+    # fixing the ECR Public anonymous-pull rate limit).
+    return {"status": "healthy", "deployed_via": "github-actions-v2"}
 
 
 app.include_router(upload_router, prefix="/api")
