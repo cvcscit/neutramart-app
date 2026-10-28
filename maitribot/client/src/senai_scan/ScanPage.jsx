@@ -13,6 +13,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { jwtDecode } from "jwt-decode";
 import { initShenai, deinitShenai } from "./sdk.js";
 import { toVitals, statusText } from "./adapter.js";
+import * as api from "../api.js";
 
 const CANVAS_ID = "mxcanvas";
 const CANVAS_SELECTOR = "#" + CANVAS_ID;
@@ -128,12 +129,20 @@ export default function ScanPage() {
     };
   }, []);
 
-  function finish(vitals) {
+  async function finish(vitals) {
     try {
       sessionStorage.setItem(PENDING_KEY, JSON.stringify(vitals));
     } catch {
       // Storage full/blocked: better to return without the result than to strand the
       // user on this page with no way back.
+    }
+    try {
+      // Persist so the chat agent can reference this scan later. Non-fatal: the user
+      // still sees their result even if the save fails (matches the backend's own
+      // "don't fail the request if the scan save fails" convention).
+      await api.saveVitalsScan(vitals);
+    } catch (e) {
+      console.warn("[senai_scan] failed to save vitals scan:", e);
     }
     deinitShenai();
     window.location.href = RETURN_TO;

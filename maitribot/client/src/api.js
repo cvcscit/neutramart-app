@@ -80,6 +80,16 @@ export async function faceScan(key, contentType) {
   }, 280000);
 }
 
+export async function saveVitalsScan(vitals) {
+  // Persists a client-computed scan (e.g. the Shen.AI on-device scan) so the chat agent
+  // can reference heart-rate/BP history later. See backend POST /facescan/save.
+  return req("/facescan/save", {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(vitals),
+  });
+}
+
 export async function chat(message, history = []) {
   return req("/chat", {
     method: "POST",
@@ -92,6 +102,16 @@ export async function generateWeeklySummary() {
   return req("/weekly-summary/generate", { method: "POST", headers: authHeaders() });
 }
 
-export async function getNutritionSummary(period = "daily") {
-  return req(`/nutrition/summary?period=${period}`, { headers: authHeaders() });
+export async function getNutritionSummary(period = "daily", { startDate, endDate } = {}) {
+  const params = new URLSearchParams({ period });
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  return req(`/nutrition/summary?${params}`, { headers: authHeaders() });
+}
+
+export async function getVitalsSummary({ startDate, endDate, limit = 60 } = {}) {
+  const params = new URLSearchParams({ limit });
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  return req(`/vitals/summary?${params}`, { headers: authHeaders() });
 }

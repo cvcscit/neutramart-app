@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
 import { GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
-import DashboardPanel from "./DashboardPanel.jsx";
+import DashboardPanel, { formatVitalsLabel } from "./DashboardPanel.jsx";
 import FaceScanModal from "./FaceScanModal.jsx";
 import { PENDING_KEY as SENAI_PENDING_KEY } from "./senai_scan/ScanPage.jsx";
 import * as api from "./api.js";
+import { BarChart, LineChart, MultiLineChart, SERIES_DEFAULT, SERIES_PAIR } from "./charts/Charts.jsx";
 
 const SUGGESTIONS = [
   "📷 Scan a meal",
@@ -122,6 +123,31 @@ function VitalsCard({ data }) {
   );
 }
 
+// Inline chart card, pushed by detectChartIntent() below instead of a text reply when a
+// message is chart-shaped ("show me my protein trend"). `kind` picks the chart type;
+// "bar" for nutrition totals, "line" for a single vitals metric, "bp" for the two-line
+// systolic/diastolic pair.
+function ChartCard({ kind, caption, points, unit }) {
+  return (
+    <div className="card analysis">
+      <div className="card-body">
+        <div className="card-title">📊 {caption}</div>
+        {kind === "bar" && <BarChart data={points} color={SERIES_DEFAULT} unit={unit} ariaLabel={caption} />}
+        {kind === "line" && <LineChart data={points} color={SERIES_DEFAULT} unit={unit} ariaLabel={caption} />}
+        {kind === "bp" && (
+          <MultiLineChart
+            ariaLabel={caption}
+            series={[
+              { label: "Systolic", color: SERIES_PAIR[0], points: points.map((p) => p.systolic) },
+              { label: "Diastolic", color: SERIES_PAIR[1], points: points.map((p) => p.diastolic) },
+            ]}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Must stay unique across reloads: messages are restored from sessionStorage, so a counter
 // that restarts at 0 would hand out keys that collide with restored ones.
 let idc = 0;
@@ -141,6 +167,66 @@ const mdBold = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 const _show = (v) => v !== undefined && v !== null && v !== "" && v !== "N/A";
 
 // Format the backend analysis into a readable bot reply (always renders as text).
+// Matches a chart-shaped chat message ("show me my protein trend") to a metric + period,
+// client-side -- deterministic and fast, no LLM round trip. Returns null for anything that
+// doesn't look chart-shaped, so normal chat is untouched for every other message.
+const NUTRITION_METRICS = {
+  calor: { field: "total_calories", unit: " kcal", label: "Calories" },
+  protein: { field: "total_protein", unit: "g", label: "Protein" },
+  carb: { field: "total_carbs", unit: "g", label: "Carbs" },
+  fat: { field: "total_fat", unit: "g", label: "Fat" },
+};
+
+function detectChartIntent(text) {
+  const t = text.toLowerCase();
+  if (!/\b(chart|plot|graph|trend|compare)\b|show.*over time|how.*(changed|trending)/.test(t)) return null;
+
+  if (/heart rate|pulse|\bbpm\b/.test(t)) return { kind: "vitals", metric: "heart_rate_bpm", label: "Heart rate", unit: " bpm" };
+  if (/blood pressure|\bbp\b/.test(t)) return { kind: "vitals", metric: "bp", label: "Blood pressure" };
+  if (/\bhrv\b|heart.*variability/.test(t)) return { kind: "vitals", metric: "hrv_sdnn_ms", label: "HRV", unit: " ms" };
+  if (/stress/.test(t)) return { kind: "vitals", metric: "stress_index", label: "Stress index", unit: "" };
+
+  for (const [kw, spec] of Object.entries(NUTRITION_METRICS)) {
+    if (t.includes(kw)) {
+      const period = /month/.test(t) ? "monthly" : /week/.test(t) ? "weekly" : "daily";
+      return { kind: "nutrition", period, ...spec };
+    }
+  }
+  return null;
+}
+
+// Fetches structured data for a detected intent and builds a `type: "chart"` message.
+// Throws on fetch failure so the caller can fall back to a plain error bubble.
+async function buildChartMessage(intent) {
+  if (intent.kind === "vitals") {
+    const res = await api.getVitalsSummary();
+    const rows = (res.data || []).slice(-14);
+
+    if (intent.metric === "bp") {
+      const pts = rows.filter((r) => r.systolic != null && r.diastolic != null)
+        .map((r) => ({ systolic: r.systolic, diastolic: r.diastolic }));
+      if (pts.length === 0) return { role: "assistant", text: "I don't have any blood-pressure scans yet — try the 🩺 scan first." };
+      return { role: "assistant", type: "chart", data: { kind: "bp", caption: "Blood pressure · recent scans", points: pts } };
+    }
+
+    const pts = rows.filter((r) => r[intent.metric] != null)
+      .map((r) => ({ label: formatVitalsLabel(r.date), value: r[intent.metric] }));
+    if (pts.length === 0) return { role: "assistant", text: `I don't have any ${intent.label.toLowerCase()} readings yet — try the 🩺 scan first.` };
+    return { role: "assistant", type: "chart", data: { kind: "line", caption: `${intent.label} · recent scans`, points: pts, unit: intent.unit } };
+  }
+
+  // nutrition
+  const res = await api.getNutritionSummary(intent.period);
+  const rows = (res.data || []).slice(-7);
+  if (rows.length === 0) return { role: "assistant", text: "I don't see any meals logged yet — scan a meal to get started." };
+  const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const pts = rows.map((r) => ({
+    label: intent.period === "daily" ? DOW[new Date(r.date + "T00:00:00Z").getUTCDay()] : (r.date || "").slice(5),
+    value: r[intent.field] || 0,
+  }));
+  return { role: "assistant", type: "chart", data: { kind: "bar", caption: `${intent.label} · recent ${intent.period}`, points: pts, unit: intent.unit } };
+}
+
 function formatAnalysis(d) {
   if (!d) return "⚠️ Empty response from server.";
   const noFood = !_show(d.description) || /no food/i.test(String(d.description)) || !_show(d.calories);
@@ -288,6 +374,7 @@ function Bubble({ m }) {
   }
   if (m.type === "analysis") return <AnalysisCard data={m.data} thumb={m.thumb} region={m.region} />;
   if (m.type === "vitals") return <VitalsCard data={m.data} />;
+  if (m.type === "chart") return <ChartCard {...m.data} />;
   return (
     <div className={`bubble ${m.role}`}>
       {m.thumb && <img className="bubble-thumb" src={m.thumb} alt="upload" />}
@@ -381,6 +468,17 @@ export default function App() {
     setInput("");
     setBusy(true);
     try {
+      // Chart-shaped messages ("show me my protein trend") skip the chat agent entirely —
+      // deterministic client-side detection + a direct summary-endpoint fetch is faster
+      // and can't be derailed by the LLM mangling a structured response. Anything that
+      // doesn't match falls through to the normal chat call below, untouched.
+      const intent = detectChartIntent(text);
+      if (intent) {
+        const msg = await buildChartMessage(intent);
+        add(msg);
+        return;
+      }
+
       // Bedrock requires the conversation to start with a user turn — drop the
       // greeting / any leading assistant messages, keep only text turns.
       const convo = messages.filter((m) => m.text && (m.role === "user" || m.role === "assistant"));

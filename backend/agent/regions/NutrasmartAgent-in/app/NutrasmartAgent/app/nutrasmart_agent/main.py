@@ -12,9 +12,14 @@ Identity is never taken from the client: the FastAPI edge validates the Google I
 derives ``user_id`` and passes it here. This agent trusts ``user_id`` from the payload only.
 
 Data model (S3 bucket ``sci-neutrasmart-project`` in ap-south-1):
-    users/{user_id}/scans/{ts}.json      food-analysis records (the knowledge base)
-    users/{user_id}/weekly_summary.txt   generated eating summary
-    users/{user_id}/health_profile.json  optional health profile
+    users/{user_id}/scans/{ts}.json         food-analysis records (the knowledge base)
+    users/{user_id}/vitals_scans/{ts}.json  heart-rate/BP/SpO2 scans -- written either by
+                                             face_scan below (in-house video pipeline) or
+                                             directly by the FastAPI edge's POST
+                                             /facescan/save (client-side Shen.AI scans,
+                                             which never upload a video)
+    users/{user_id}/weekly_summary.txt      generated eating summary
+    users/{user_id}/health_profile.json     optional health profile
 
 ``analyze`` and ``face_scan`` are each implemented by their own self-contained subpackage
 (``food_scan/``, ``face_scan_biomarkers/``) -- separate workstreams, each owning its own
@@ -95,15 +100,28 @@ WEEKLY_SUMMARY_PROMPT = (
 
 CHAT_SYSTEM_PROMPT = (
     "You are NutraSmart AI, a friendly and knowledgeable nutrition assistant. "
-    "You have access to the user's food analysis history and eating summary through "
-    "your tools. Call get_recent_scans at the start of EVERY conversation turn that "
-    "touches food in any way — not just explicit questions about 'my diet', but also "
-    "generic-sounding requests like 'suggest a soup', 'what should I eat', or 'give me "
-    "a recipe'. Treat every such request as an opportunity to personalize: tie "
+    "You have access to the user's food analysis history, vitals scan history (heart "
+    "rate, blood pressure, SpO2, HRV, breathing rate, stress), and eating summary "
+    "through your tools. Call get_recent_scans at the start of EVERY conversation turn "
+    "that touches food in any way — not just explicit questions about 'my diet', but "
+    "also generic-sounding requests like 'suggest a soup', 'what should I eat', or "
+    "'give me a recipe'. Treat every such request as an opportunity to personalize: tie "
     "suggestions back to what they've actually logged (e.g. 'you've had a lot of rice "
     "this week — this soup leans on vegetables instead', or 'since you logged chicken "
     "twice, here's a different protein to mix it up'). Only fall back to a generic "
     "answer if get_recent_scans genuinely returns no data for this user.\n\n"
+    "Also call get_recent_vitals_scans whenever heart rate, blood pressure, or vitals "
+    "come up, or proactively when it's relevant to a nutrition question (e.g. someone "
+    "asking for salty-food or caffeine recommendations when their last BP reading ran "
+    "high). If a reading looks notably outside a normal range for a resting adult "
+    "(e.g. resting heart rate well above ~100 or below ~50 bpm, blood pressure in a "
+    "hypertensive range like 140/90+), call it out directly and plainly — don't bury "
+    "it — and connect it to their recent eating pattern where there's a real link (e.g. "
+    "high sodium intake and elevated blood pressure). Suggest specific foods or habits "
+    "that may help, and always add that they should check with a doctor for anything "
+    "concerning — you're flagging a pattern, not diagnosing it. Treat vitals the same "
+    "way as food: reference specific numbers naturally, don't narrate that you checked, "
+    "and say so honestly if there's no scan on file yet.\n\n"
     "Rules:\n"
     "- Talk like one person talking to another — warm, direct, natural. Never sound "
     "like a report or a system describing someone. This means:\n"
@@ -174,6 +192,84 @@ def get_recent_scans(user_id: str, days: int = 60) -> str:
             f"Fiber: {scan.get('fiber', 'N/A')}, "
             f"Sugar: {scan.get('sugar', 'N/A')}\n"
             f"  Micronutrients: {micro_text or 'N/A'}\n\n"
+        )
+    return records_text
+
+
+@tool
+def get_recent_vitals_scans(user_id: str, days: int = 60) -> str:
+    """Fetch the user's heart-rate/blood-pressure/SpO2 scan records from the last N days
+    (default 60). Covers scans from either source (the in-house video pipeline or the
+    client-side Shen.AI scan) since both write to the same vitals_scans/ prefix.
+
+    Returns a formatted text block of dated vitals readings -- the knowledge base for
+    flagging concerning readings and tying them to recent eating habits in chat.
+    """
+    prefix = f"users/{user_id}/vitals_scans/"
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    response = s3.list_objects_v2(Bucket=S3_BUCKET_NAME, Prefix=prefix)
+    if "Contents" not in response:
+        return "No vitals scans found for this user."
+
+    scans = []
+    for obj in response["Contents"]:
+        filename = obj["Key"].split("/")[-1].replace(".json", "")
+        try:
+            scan_time = datetime.strptime(filename, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if scan_time >= cutoff:
+            scan_data = s3.get_object(Bucket=S3_BUCKET_NAME, Key=obj["Key"])
+            scans.append(json.loads(scan_data["Body"].read()))
+
+    if not scans:
+        return f"No vitals scans in the last {days} days for this user."
+
+    def _metric(name: str, m: dict | None, unit: str = "") -> str:
+        if not m or m.get("status") not in ("ok", None):
+            return f"{name}: not available ({(m or {}).get('reason', 'no reading')})"
+        return f"{name}: {m.get('heart_rate_bpm') or m.get('value', 'N/A')}{unit}"
+
+    records_text = ""
+    for scan in sorted(scans, key=lambda x: x.get("timestamp", "")):
+        hr = scan.get("heart_rate") or {}
+        bp = scan.get("bp") or {}
+        spo2 = scan.get("spo2") or {}
+        extras = scan.get("extras") or {}
+
+        hr_text = _metric("Heart rate", hr, " bpm")
+
+        # Shen.AI uses sbp/dbp; the in-house pipeline uses systolic/diastolic.
+        sbp = bp.get("sbp", bp.get("systolic"))
+        dbp = bp.get("dbp", bp.get("diastolic"))
+        bp_text = (
+            f"Blood pressure: {sbp}/{dbp} mmHg (experimental estimate)"
+            if bp.get("status") == "ok" and sbp is not None and dbp is not None
+            else f"Blood pressure: not available ({bp.get('reason', 'no reading')})"
+        )
+
+        spo2_val = spo2.get("spo2")
+        spo2_text = (
+            f"SpO2: {spo2_val}% (experimental estimate)"
+            if spo2.get("status") == "ok" and spo2_val is not None
+            else "SpO2: not measured"
+        )
+
+        extras_parts = []
+        if extras.get("hrv_sdnn_ms") is not None:
+            extras_parts.append(f"HRV: {extras['hrv_sdnn_ms']} ms")
+        if extras.get("breathing_rate_bpm") is not None:
+            extras_parts.append(f"breathing rate: {extras['breathing_rate_bpm']}/min")
+        if extras.get("stress_index") is not None:
+            extras_parts.append(f"stress index: {extras['stress_index']}")
+        extras_text = f"  {', '.join(extras_parts)}\n" if extras_parts else ""
+
+        records_text += (
+            f"- Date: {scan.get('timestamp', 'unknown')}\n"
+            f"  {hr_text}\n"
+            f"  {bp_text}\n"
+            f"  {spo2_text}\n"
+            f"{extras_text}\n"
         )
     return records_text
 
@@ -277,7 +373,7 @@ def _handle_chat(payload: dict) -> dict:
     agent = Agent(
         model=_model(),
         system_prompt=CHAT_SYSTEM_PROMPT + f"\n(The current user_id is: {user_id})\n",
-        tools=[get_recent_scans, get_health_profile, get_eating_summary],
+        tools=[get_recent_scans, get_recent_vitals_scans, get_health_profile, get_eating_summary],
         messages=prior,
     )
     result = agent(message)

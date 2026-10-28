@@ -1,10 +1,13 @@
-FROM python:3.12-slim AS builder
+# AWS ECR Public mirrors official Docker Hub images 1:1 -- using it instead of
+# docker.io directly sidesteps Docker Hub's rate limits/flakiness, and this image is
+# deployed to AWS anyway, so pulls from ECR Public are typically faster too.
+FROM public.ecr.aws/docker/library/python:3.12-slim AS builder
 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --target=/app/deps -r requirements.txt
 
-FROM python:3.12-slim
+FROM public.ecr.aws/docker/library/python:3.12-slim
 
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
 
