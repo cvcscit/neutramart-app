@@ -13,17 +13,25 @@ DISTRIBUTION_ID="E1H343JO0UX83F"
 echo "==> Building..."
 npm run build
 
+# Everything that is NOT content-hashed by Vite -- the two HTML entry points, the PWA
+# manifest, and the home-screen/favicon icons -- must revalidate on every visit, since
+# their filenames never change when their content does. Only the hashed /assets/* and
+# the vendored /shenai-sdk/* are safe to cache for a year.
+UNHASHED="index.html scan.html manifest.webmanifest apple-touch-icon.png icon-192.png icon-512.png favicon-32.png"
+EXCLUDES=()
+for f in $UNHASHED; do EXCLUDES+=(--exclude "$f"); done
+
 echo "==> Syncing hashed assets (immutable, 1yr cache)..."
 AWS_PROFILE="$PROFILE" aws s3 sync dist/ "s3://$BUCKET/" \
   --delete \
-  --exclude "index.html" --exclude "scan.html" \
+  "${EXCLUDES[@]}" \
   --cache-control "public, max-age=31536000, immutable"
 
-echo "==> Syncing HTML entry points (always revalidate)..."
-AWS_PROFILE="$PROFILE" aws s3 cp dist/index.html "s3://$BUCKET/index.html" \
-  --cache-control "no-cache, must-revalidate"
-AWS_PROFILE="$PROFILE" aws s3 cp dist/scan.html "s3://$BUCKET/scan.html" \
-  --cache-control "no-cache, must-revalidate"
+echo "==> Syncing unhashed files (always revalidate)..."
+for f in $UNHASHED; do
+  AWS_PROFILE="$PROFILE" aws s3 cp "dist/$f" "s3://$BUCKET/$f" \
+    --cache-control "no-cache, must-revalidate"
+done
 
 echo "==> Invalidating CloudFront..."
 AWS_PROFILE="$PROFILE" aws cloudfront create-invalidation \
