@@ -1,16 +1,16 @@
 :root {
-  /* Wellness360 palette: deep forest green on a soft mint canvas, white cards,
-     amber reserved for the one primary/highlighted action. */
-  --green: #15573a;          /* primary: avatar, send/camera buttons, values */
-  --green-deep: #0e3f29;     /* hover / pressed */
-  --green-soft: #dcebe0;     /* tints, hovers */
+  /* W360 palette: warm gold on a cream canvas, white cards, deep green ink --
+     matches the app icon (cream circle, gold ring/number, green wordmark). */
+  --green: #8a6a1f;          /* primary: avatar, send/camera buttons, values (gold) */
+  --green-deep: #6b5118;     /* hover / pressed */
+  --green-soft: #f1e4bd;     /* tints, hovers */
   --surface: #ffffff;        /* cards, bubbles, composer */
-  --page: #eaf3ec;           /* app canvas (mint) */
-  --ink: #12301f;            /* headings */
-  --ink-2: #3c5447;          /* body text */
-  --muted: #7d938a;          /* labels, captions */
-  --line: #d6e6da;           /* hairlines */
-  --user: #15573a;
+  --page: #f3ecd9;           /* app canvas (cream) */
+  --ink: #12301f;            /* headings (deep green, matches wordmark) */
+  --ink-2: #4f4a33;          /* body text (warm brown-olive) */
+  --muted: #8f8569;          /* labels, captions */
+  --line: #e6dcc0;           /* hairlines */
+  --user: #8a6a1f;
   --accent: #c2410c;         /* amber accent text */
   --accent-line: #e8a06a;    /* amber accent border */
   --accent-soft: #fdf1e5;    /* amber accent fill */
