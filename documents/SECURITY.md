@@ -1,6 +1,6 @@
 # nutrasmart Backend — Security Overview
 
-## Network Security
+## Network Securityy
 
 - Fargate tasks run in **private subnets** — no direct internet access
 - ALB in **public subnets** is the only entry point
@@ -10,7 +10,7 @@
 
 - **Zero hardcoded AWS keys** — boto3 uses the IAM Task Role automatically on Fargate
 - Frontend uses **presigned URLs** for S3 uploads — never sees AWS credentials
-- Google Client ID stored in **SSM Parameter Store** (encrypted)
+- Google Client ID stored in **SSM Parameter Store** (encrypted)x
 
 ## Container Security
 
